@@ -1,0 +1,48 @@
+project_name: "single_cell_immune_atlas"
+seed: 1337
+organism: "human"
+
+datasets:
+  - id: "GSE98638"
+    modality: "scRNA"
+    url: "https://example.org/GSE98638_matrix.mtx.gz"   # placeholder
+    genes: "https://example.org/GSE98638_genes.tsv.gz"  # placeholder
+    barcodes: "https://example.org/GSE98638_barcodes.tsv.gz"
+    metadata: "https://example.org/GSE98638_meta.tsv.gz"
+    platform: "10x"
+    cancer_type: "melanoma"
+  - id: "GSE131907"
+    modality: "scRNA"
+    url: "https://example.org/GSE131907_matrix.h5ad"
+    platform: "10x"
+    cancer_type: "NSCLC"
+
+qc:
+  min_genes: 200
+  max_genes: 6000
+  max_mt_pct: 15
+
+doublets:
+  method: "scrublet"
+  expected_doublet_rate: 0.06
+
+integration:
+  method: "scvi"   # options: "scvi" | "harmony"
+  latent_dim: 30
+  batch_key: "dataset_id"
+
+neighbors:
+  n_neighbors: 15
+  n_pcs: 50
+
+umap:
+  min_dist: 0.4
+  spread: 1.0
+
+annotation:
+  strategy: "markers"
+  min_pct: 0.1
+
+outputs:
+  cellxgene_dir: "processed/cellxgene_release"
+  figures_dir: "processed/figures"

@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "single-cell-immune-atlas"
+version = "0.1.0"
+description = "Production-quality Single-cell Immune Atlas with batch correction and annotation"
+authors = [
+    {name = "Single-cell Immune Atlas Contributors"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "scanpy",
+    "anndata",
+    "pandas",
+    "numpy",
+    "matplotlib",
+    "plotly",
+    "seaborn",
+    "scikit-learn",
+    "scrublet",
+    "harmonypy",
+    "scvi-tools",
+    "umap-learn",
+    "streamlit",
+    "pyyaml",
+    "requests",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "flake8",
+    "ruff",
+    "pytest",
+    "pre-commit",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
