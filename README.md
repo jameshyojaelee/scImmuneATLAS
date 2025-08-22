@@ -1,181 +1,263 @@
-Single-cell Immune Atlas
-========================
+# 🧬 scImmuneATLAS
 
-Project goal
-------------
-Build a production-quality, reproducible Single-cell Immune Atlas that integrates multiple public tumor-infiltrating lymphocyte (TIL) scRNA-seq datasets, performs QC and doublet removal, corrects batch effects (Harmony or scVI), annotates immune cell types via markers, and publishes an interactive viewer (cellxgene-ready h5ad and a minimal Streamlit browser).
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Pipeline overview
------------------
+**A comprehensive, production-ready single-cell immune atlas for tumor-infiltrating lymphocytes (TILs)**
 
+scImmuneATLAS is a robust computational framework that integrates multiple public scRNA-seq datasets of tumor-infiltrating lymphocytes, providing researchers with a standardized, reproducible pipeline for immune cell analysis in cancer contexts.
+
+## ✨ Key Features
+
+- 🔬 **Multi-dataset Integration**: Seamlessly combine diverse TIL scRNA-seq datasets
+- 🎯 **Advanced QC Pipeline**: Automated quality control and doublet detection
+- 🧩 **Batch Effect Correction**: Support for both Harmony and scVI integration methods  
+- 🏷️ **Immune Cell Annotation**: Marker-based cell type identification
+- 📊 **Interactive Visualization**: Built-in Streamlit app and cellxgene compatibility
+- 🔄 **Reproducible Workflow**: Snakemake-based pipeline with comprehensive testing
+
+## 🔄 Analysis Workflow
+
+```mermaid
+graph TD
+    A[Raw Data<br/>MTX/H5AD/TSV] --> B[Quality Control<br/>& Doublet Removal]
+    B --> C[Batch Integration<br/>Harmony | scVI]
+    C --> D[Cell Type Annotation<br/>Marker-based]
+    D --> E[Visualization<br/>& Export]
+    
+    B --> F[data/interim/]
+    C --> G[processed/integrated_atlas.h5ad]
+    D --> H[processed/integrated_annotated.h5ad]
+    E --> I[Interactive Viewer<br/>Figures & Reports]
+    
+    style A fill:#e1f5fe
+    style E fill:#f3e5f5
+    style I fill:#e8f5e8
 ```
-Raw data (MTX/H5AD/TSV)
-   │
-   ├── download_raw  → data/raw/
-   │
-   ├── qc_one        → data/interim/{dataset}.h5ad
-   │
-   ├── doublets_one  → data/interim/{dataset}.doublet_filtered.h5ad
-   │
-   ├── integrate (Harmony | scVI) → processed/integrated_atlas.h5ad
-   │
-   ├── annotate (marker-based)    → processed/integrated_annotated.h5ad
-   │
-   ├── export_cellxgene           → processed/cellxgene_release/atlas.h5ad
-   │
-   └── figures + report           → processed/figures/, processed/report.md
+
+## 📊 Output Gallery
+
+scImmuneATLAS generates publication-ready visualizations including:
+
+- **🗺️ UMAP Embeddings**: Interactive plots colored by cell type, dataset, and cancer type
+- **📈 Cell Composition**: Stacked barplots showing immune cell proportions across conditions  
+- **🔥 Marker Heatmaps**: Expression profiles for immune cell type signatures
+- **📱 Interactive Dashboard**: Streamlit-based explorer for real-time data interaction
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+
+- Conda/Mamba package manager
+
+### Installation
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/YOUR_USERNAME/scImmuneATLAS.git
+cd scImmuneATLAS
 ```
 
-Example figures
----------------
-This repository generates:
-- UMAP colored by cell type, dataset, and cancer type
-- Stacked barplots of cell-type proportions per cancer type
-- A marker heatmap for a small panel of immune reference genes
-
-Quickstart
-----------
-
-1) Create and activate environment
-
+2. **Set up environment**
 ```bash
 mamba env create -f env.yml
 mamba activate immune-atlas
 ```
 
-2) Install pre-commit hooks
-
+3. **Install development tools**
 ```bash
 pre-commit install
 ```
 
-3) Run the tiny end-to-end demo
+### Run Demo
+
+Test the complete pipeline with synthetic data:
 
 ```bash
 make demo
 ```
 
-This will synthesize a small dataset, run QC, integration, marker-based annotation, export a cellxgene-compatible h5ad, and save figures under `processed/figures/`.
+This command will:
+- ✅ Generate synthetic TIL data
+- ✅ Perform quality control and doublet detection  
+- ✅ Integrate datasets using batch correction
+- ✅ Annotate immune cell types
+- ✅ Generate visualizations and export results
 
-Repository layout
------------------
+Results will be saved in `processed/figures/` and `processed/cellxgene_release/`.
+
+## 📁 Project Structure
 
 ```
-single-cell-immune-atlas/
-  README.md
-  LICENSE
-  env.yml
-  Makefile
-  .gitignore
-  .pre-commit-config.yaml
-  pyproject.toml
-  setup.cfg
-  Snakefile
-  config/
-    atlas.yaml
-  data/
-    raw/
-    interim/
-    processed/
-    external/
-  notebooks/
-    00_explore_inputs.ipynb
-    01_qc_and_doublets.ipynb
-    02_integration.ipynb
-    03_annotation_and_markers.ipynb
-    04_proportions_and_signatures.ipynb
-  src/atlas/
-    __init__.py
-    io.py
-    qc.py
-    doublets.py
-    integration.py
-    annotate.py
-    viz.py
-    export.py
-    utils.py
-    markers/
-      immune_markers_human.tsv
-  app/
-    streamlit_app.py
-  tests/
-    test_smoke.py
-    test_io.py
-    test_qc.py
+scImmuneATLAS/
+├── 📋 README.md              # This file
+├── 📜 LICENSE                # MIT license
+├── 🐍 env.yml               # Conda environment
+├── ⚙️ Makefile              # Build automation
+├── 🔧 Snakefile             # Workflow definition
+├── 📊 config/
+│   └── atlas.yaml           # Analysis parameters
+├── 💾 data/                 # Data directory
+│   ├── raw/                 # Original datasets
+│   ├── interim/             # Intermediate processing
+│   ├── processed/           # Final outputs
+│   └── external/            # Reference data
+├── 📓 notebooks/            # Analysis notebooks
+│   ├── 00_explore_inputs.ipynb
+│   ├── 01_qc_and_doublets.ipynb
+│   ├── 02_integration.ipynb
+│   ├── 03_annotation_and_markers.ipynb
+│   └── 04_proportions_and_signatures.ipynb
+├── 🔬 src/atlas/           # Core analysis modules
+│   ├── io.py               # Data I/O operations
+│   ├── qc.py               # Quality control
+│   ├── integration.py      # Batch correction
+│   ├── annotate.py         # Cell type annotation
+│   ├── viz.py              # Visualization
+│   └── markers/            # Reference gene sets
+├── 🖥️ app/                 # Interactive applications
+│   └── streamlit_app.py    # Web dashboard
+└── 🧪 tests/               # Unit tests
+    ├── test_smoke.py
+    ├── test_io.py
+    └── test_qc.py
 ```
 
-Configuration
--------------
-Datasets and key parameters live in `config/atlas.yaml`. Replace the placeholder URLs with real URLs or local file paths when running on real data. The code accepts local paths or HTTP(S) links.
+## ⚙️ Configuration
 
-How to run
-----------
-- Snakemake pipeline:
+Edit `config/atlas.yaml` to customize your analysis:
 
+```yaml
+# Example configuration
+datasets:
+  - name: "dataset1"
+    url: "path/to/data.h5ad"
+    cancer_type: "NSCLC"
+  - name: "dataset2" 
+    url: "https://example.com/data.h5ad"
+    cancer_type: "Melanoma"
+
+integration:
+  method: "harmony"  # or "scvi"
+  batch_key: "dataset"
+
+annotation:
+  marker_genes: "src/atlas/markers/immune_markers_human.tsv"
+```
+
+## 🏃‍♂️ Running the Pipeline
+
+### Full Pipeline
 ```bash
+# Using Snakemake (recommended)
 snakemake -j 8
-```
 
-- Or use GNU Make as a wrapper:
-
-```bash
+# Using Make wrapper  
 make all
 ```
 
-Outputs
--------
-- `processed/integrated_atlas.h5ad` — integrated atlas after batch correction
-- `processed/integrated_annotated.h5ad` — annotated atlas with immune cell types
-- `processed/cellxgene_release/atlas.h5ad` — cellxgene-compatible release object
-- `processed/figures/` — static UMAPs, barplots, and heatmaps
-- `processed/report.md` — lightweight markdown summary of the run
+### Individual Steps
+```bash
+# Quality control
+python -m src.atlas.qc --config config/atlas.yaml
 
-Interactive viewer
-------------------
-Launch the minimal Streamlit app:
+# Integration  
+python -m src.atlas.integration --method harmony --config config/atlas.yaml
+
+# Annotation
+python -m src.atlas.annotate --config config/atlas.yaml
+```
+
+## 📤 Outputs
+
+| File | Description |
+|------|-------------|
+| `processed/integrated_atlas.h5ad` | 🧬 Integrated atlas after batch correction |
+| `processed/integrated_annotated.h5ad` | 🏷️ Annotated atlas with immune cell types |
+| `processed/cellxgene_release/atlas.h5ad` | 🌐 cellxgene-compatible release |
+| `processed/figures/` | 📊 Publication-ready visualizations |
+| `processed/report.md` | 📋 Analysis summary report |
+
+## 🖥️ Interactive Explorer
+
+Launch the web-based data explorer:
 
 ```bash
 make app
 ```
 
-The app reads `processed/integrated_annotated.h5ad` and the configuration in `config/atlas.yaml`.
+Features:
+- 🔍 Interactive UMAP exploration
+- 📊 Real-time filtering and selection
+- 📈 Gene expression visualization  
+- 💾 Export selected data
 
-Daily Plan
-----------
 
-| Day | Task | Command(s) | Output |
-| --- | --- | --- | --- |
-| Mon | Download datasets & write metadata table | `python -m src.atlas.io --download --config config/atlas.yaml` | `data/raw/*`, `data/external/metadata.tsv` |
-| Tue | QC + doublets per dataset | `python -m src.atlas.qc --run --config config/atlas.yaml` then `python -m src.atlas.doublets --run --config config/atlas.yaml` | `data/interim/*.doublet_filtered.h5ad` |
-| Wed | Integration (scVI or Harmony) | `python -m src.atlas.integration --method scvi --config config/atlas.yaml` | `processed/integrated_atlas.h5ad` |
-| Thu | Annotation | `python -m src.atlas.annotate --config config/atlas.yaml` | `processed/integrated_annotated.h5ad` |
-| Fri | Visualizations & proportions | `python -m src.atlas.viz --all --config config/atlas.yaml` | `processed/figures/*.png` |
-| Sat | Export for cellxgene + Streamlit | `python -m src.atlas.export --cellxgene --config config/atlas.yaml` and `make app` | `processed/cellxgene_release/atlas.h5ad` |
-| Sun | Final cleanup & docs | `make lint && make test && make all` | Updated README + repo push |
 
-FAQ and troubleshooting
------------------------
+## ❓ FAQ & Troubleshooting
 
-- Scanpy memory usage: Use backed mode for very large objects (`anndata.read_h5ad(..., backed='r')`) or subset genes/cells.
-- Neighbors/UMAP determinism: We set `random_state` in neighbors and UMAP; minor variations can still occur.
-- scVI with/without GPU: The pipeline will run on CPU by default. If GPU is available, install `pytorch-cuda` and scVI will detect it; otherwise pass `use_gpu=False`.
-- Harmony vs scVI: Choose via `integration.method` in `config/atlas.yaml`. Harmony is faster and lighter; scVI can better model complex batch effects.
-- Mitochondrial genes: Assumed to be named with the prefix `MT-` (human). Ensure gene names are in `var_names` and uppercased if needed.
+<details>
+<summary><strong>Memory Issues</strong></summary>
 
-Demo data
----------
-The `make demo` target runs on synthetic data to keep the footprint small and ensure a quick end-to-end run. For real analyses, replace placeholder URLs in `config/atlas.yaml` with real datasets and re-run.
+For large datasets, use backed mode to reduce memory usage:
+```python
+adata = anndata.read_h5ad("large_file.h5ad", backed='r')
+```
+</details>
 
-License
--------
-This project is licensed under the MIT License (see `LICENSE`).
+<details>
+<summary><strong>GPU Support</strong></summary>
 
-Contributing
-------------
-Pull requests are welcome. Please run `make lint` and `make test` before submitting changes.
+scVI will automatically detect GPU if available. To enable:
+```bash
+mamba install pytorch-cuda -c pytorch -c nvidia
+```
+</details>
 
-TODOs for real-data runs
-------------------------
-- Replace placeholder dataset URLs in `config/atlas.yaml` with real URLs or local file paths
-- Consider adding additional immune markers to `src/atlas/markers/immune_markers_human.tsv`
-- Optionally enable GPU for scVI by installing `pytorch-cuda` (see `env.yml`)
+<details>
+<summary><strong>Integration Methods</strong></summary>
+
+- **Harmony**: Faster, lighter weight, good for most use cases
+- **scVI**: Better for complex batch effects, requires more compute
+</details>
+
+<details>
+<summary><strong>Reproducibility</strong></summary>
+
+Random seeds are set for deterministic results. Minor UMAP variations may still occur due to numerical precision.
+</details>
+
+## 📚 Citation
+
+If you use scImmuneATLAS in your research, please cite:
+
+```bibtex
+@software{scImmuneATLAS,
+  title = {scImmuneATLAS: A comprehensive single-cell immune atlas framework},
+  author = {Your Name},
+  year = {2024},
+  url = {https://github.com/YOUR_USERNAME/scImmuneATLAS}
+}
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Run tests (`make test`) and linting (`make lint`)
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  <strong>🧬 Built for the single-cell community by researchers, for researchers 🔬</strong>
+</p>
