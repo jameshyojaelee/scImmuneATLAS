@@ -116,7 +116,9 @@ def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
     
     # Assign cell types
     cell_types = assign_cell_types(scores)
-    adata.obs["cell_type"] = cell_types
+    # Ensure clean string dtype then categorical for H5AD write compatibility
+    adata.obs["cell_type"] = cell_types.astype(str).fillna("Unknown")
+    adata.obs["cell_type"] = pd.Categorical(adata.obs["cell_type"])
     
     # Add broader compartment annotations
     compartment_map = {
@@ -132,7 +134,8 @@ def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
         "Unknown": "Unknown"
     }
     
-    adata.obs["compartment"] = adata.obs["cell_type"].map(compartment_map)
+    adata.obs["compartment"] = adata.obs["cell_type"].map(compartment_map).astype(str).fillna("Unknown")
+    adata.obs["compartment"] = pd.Categorical(adata.obs["compartment"])
     
     logging.info("Annotation completed")
     

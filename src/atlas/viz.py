@@ -39,11 +39,11 @@ def umap_by(adata: ad.AnnData, key: str, outpath: str, figsize: tuple = (8, 6)) 
 
 
 def stacked_bar(
-    adata: ad.AnnData, 
-    groupby: List[str], 
-    normalize: bool = True, 
+    adata: ad.AnnData,
+    groupby: List[str],
     outpath: str,
-    figsize: tuple = (10, 6)
+    normalize: bool = True,
+    figsize: tuple = (10, 6),
 ) -> None:
     """Create stacked bar plot showing proportions."""
     ensure_dir(Path(outpath).parent)
@@ -56,8 +56,16 @@ def stacked_bar(
     
     # Normalize if requested
     if normalize:
-        crosstab = crosstab.div(crosstab.sum(axis=1), axis=0)
+        crosstab = crosstab.div(crosstab.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+
+    # Ensure numeric dtype for plotting
+    crosstab = crosstab.apply(pd.to_numeric, errors="coerce").fillna(0.0)
     
+    # If no numeric columns remain, skip plotting
+    if crosstab.shape[1] == 0 or crosstab.select_dtypes(include=[np.number]).empty:
+        logging.warning("No numeric data to plot for stacked_bar; skipping figure")
+        return
+
     # Create plot
     fig, ax = plt.subplots(figsize=figsize)
     crosstab.plot(kind="bar", stacked=True, ax=ax, colormap="tab20")
@@ -69,7 +77,7 @@ def stacked_bar(
     
     plt.xticks(rotation=45)
     plt.tight_layout()
-    plt.savefig(outpath, dpi=300, bbox_inches="tight")
+    plt.savefig(str(outpath), dpi=300, bbox_inches="tight")
     plt.close()
     
     logging.info(f"Saved stacked bar plot to {outpath}")

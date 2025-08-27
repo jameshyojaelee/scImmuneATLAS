@@ -91,18 +91,24 @@ def run_demo(config_path: str) -> None:
         gene_names = [f"GENE_{j}" for j in range(1900)]
         gene_names.extend([f"MT-{j}" for j in range(100)])  # Add MT genes
         adata.var_names = gene_names
-        adata.var_names_unique()
+        adata.var_names_make_unique()
 
         # Add cell metadata
         adata.obs["dataset_id"] = dataset_id
         adata.obs["cancer_type"] = cancer_type
         adata.obs_names = [f"{dataset_id}_cell_{j}" for j in range(500)]
-        adata.obs_names_unique()
+        adata.obs_names_make_unique()
 
         adatas.append(adata)
 
         # Save to interim (simulate QC and doublet filtering)
-        adata_qc = qc.apply_filters(qc.compute_qc_metrics(adata), config["qc"])
+        # Relax QC for synthetic data to avoid empty datasets
+        qc_relaxed = {
+            "min_genes": max(100, int(0.01 * adata.X.sum(axis=1).mean())),
+            "max_genes": int(adata.X.sum(axis=1).mean() * 10),
+            "max_mt_pct": 50,
+        }
+        adata_qc = qc.apply_filters(qc.compute_qc_metrics(adata), qc_relaxed)
         adata_doublet = doublets.filter_doublets(
             adata_qc,
             doublets.run_scrublet(adata_qc, config["doublets"]["expected_doublet_rate"])
@@ -128,7 +134,12 @@ def run_demo(config_path: str) -> None:
     viz.umap_by(adata_annotated, "cell_type", "processed/figures/umap_by_cell_type.png")
     viz.umap_by(adata_annotated, "dataset_id", "processed/figures/umap_by_dataset.png")
     viz.umap_by(adata_annotated, "cancer_type", "processed/figures/umap_by_cancer_type.png")
-    viz.stacked_bar(adata_annotated, ["cancer_type", "cell_type"], True, "processed/figures/proportions_by_cancer_type.png")
+    viz.stacked_bar(
+        adata_annotated,
+        ["cancer_type", "cell_type"],
+        "processed/figures/proportions_by_cancer_type.png",
+        normalize=True,
+    )
 
     # Export for cellxgene
     logging.info("Exporting for cellxgene")

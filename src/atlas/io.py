@@ -90,9 +90,9 @@ def load_matrix(entry: Dict) -> ad.AnnData:
         # Join with existing obs
         adata.obs = adata.obs.join(meta_df, how="left")
     
-    # Make var_names unique
-    adata.var_names_unique()
-    adata.obs_names_unique()
+    # Make names unique
+    adata.var_names_make_unique()
+    adata.obs_names_make_unique()
     
     return adata
 
