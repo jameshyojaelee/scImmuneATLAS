@@ -19,22 +19,28 @@ scImmuneATLAS is a robust computational framework that integrates multiple publi
 
 ## 🔄 Analysis Workflow
 
-```mermaid
-graph TD
-    A[Raw Data<br/>MTX/H5AD/TSV] --> B[Quality Control<br/>& Doublet Removal]
-    B --> C[Batch Integration<br/>Harmony | scVI]
-    C --> D[Cell Type Annotation<br/>Marker-based]
-    D --> E[Visualization<br/>& Export]
-    
-    B --> F[data/interim/]
-    C --> G[processed/integrated_atlas.h5ad]
-    D --> H[processed/integrated_annotated.h5ad]
-    E --> I[Interactive Viewer<br/>Figures & Reports]
-    
-    style A fill:#e1f5fe
-    style E fill:#f3e5f5
-    style I fill:#e8f5e8
-```
+The scImmuneATLAS pipeline consists of the following main steps:
+
+1. **Raw Data Import**  
+   - Accepts MTX, H5AD, or TSV files
+
+2. **Quality Control & Doublet Removal**  
+   - Filters low-quality cells and detects doublets  
+   - Output: `data/interim/`
+
+3. **Batch Integration**  
+   - Integrates multiple datasets using Harmony or scVI  
+   - Output: `processed/integrated_atlas.h5ad`
+
+4. **Cell Type Annotation**  
+   - Assigns immune cell types using marker-based scoring  
+   - Output: `processed/integrated_annotated.h5ad`
+
+5. **Visualization & Export**  
+   - Generates figures, reports, and interactive viewers  
+   - Output: Interactive dashboard, figures, and reports
+
+**Workflow Overview:**
 
 ## 📊 Output Gallery
 

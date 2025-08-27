@@ -16,6 +16,21 @@ datasets:
     url: "https://example.org/GSE131907_matrix.h5ad"
     platform: "10x"
     cancer_type: "NSCLC"
+  - id: "MELANOMA_CENSUS"
+    modality: "scRNA"
+    url: "data/raw/melanoma_census.h5ad"
+    platform: "mixed"
+    cancer_type: "melanoma"
+  - id: "NSCLC_CENSUS"
+    modality: "scRNA"
+    url: "data/raw/nsclc_census.h5ad"
+    platform: "mixed"
+    cancer_type: "NSCLC"
+  - id: "BREAST_CENSUS"
+    modality: "scRNA"
+    url: "data/raw/breast_census.h5ad"
+    platform: "mixed"
+    cancer_type: "Breast"
 
 qc:
   min_genes: 200

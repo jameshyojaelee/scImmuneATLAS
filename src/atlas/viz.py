@@ -63,7 +63,13 @@ def stacked_bar(
     
     # If no numeric columns remain, skip plotting
     if crosstab.shape[1] == 0 or crosstab.select_dtypes(include=[np.number]).empty:
-        logging.warning("No numeric data to plot for stacked_bar; skipping figure")
+        logging.warning("No numeric data to plot for stacked_bar; writing placeholder figure")
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.axis('off')
+        ax.text(0.5, 0.5, 'No data available', ha='center', va='center')
+        plt.tight_layout()
+        plt.savefig(str(outpath), dpi=300, bbox_inches="tight")
+        plt.close()
         return
 
     # Create plot
@@ -168,17 +174,17 @@ def generate_all_figures(config: dict) -> None:
     # Generate proportion plots
     if "cancer_type" in adata.obs.columns:
         stacked_bar(
-            adata, 
-            ["cancer_type", "cell_type"], 
-            True, 
-            figures_dir / "proportions_by_cancer_type.png"
+            adata,
+            ["cancer_type", "cell_type"],
+            figures_dir / "proportions_by_cancer_type.png",
+            normalize=True,
         )
     
     stacked_bar(
-        adata, 
-        ["dataset_id", "cell_type"], 
-        True, 
-        figures_dir / "proportions_by_dataset.png"
+        adata,
+        ["dataset_id", "cell_type"],
+        figures_dir / "proportions_by_dataset.png",
+        normalize=True,
     )
     
     # Generate marker heatmap
