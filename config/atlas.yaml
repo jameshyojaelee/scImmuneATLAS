@@ -3,19 +3,6 @@ seed: 1337
 organism: "human"
 
 datasets:
-  - id: "GSE98638"
-    modality: "scRNA"
-    url: "https://example.org/GSE98638_matrix.mtx.gz"   # placeholder
-    genes: "https://example.org/GSE98638_genes.tsv.gz"  # placeholder
-    barcodes: "https://example.org/GSE98638_barcodes.tsv.gz"
-    metadata: "https://example.org/GSE98638_meta.tsv.gz"
-    platform: "10x"
-    cancer_type: "melanoma"
-  - id: "GSE131907"
-    modality: "scRNA"
-    url: "https://example.org/GSE131907_matrix.h5ad"
-    platform: "10x"
-    cancer_type: "NSCLC"
   - id: "MELANOMA_CENSUS"
     modality: "scRNA"
     url: "data/raw/melanoma_census.h5ad"

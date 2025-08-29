@@ -1,5 +1,17 @@
 """Streamlit app for exploring the Single-cell Immune Atlas."""
 
+# Ensure we do not import user site-packages (avoids NumPy/Matplotlib mismatches)
+import os
+import sys
+try:
+    import site  # type: ignore
+    user_site = site.getusersitepackages() if hasattr(site, "getusersitepackages") else None
+    if user_site and user_site in sys.path:
+        sys.path.remove(user_site)
+except Exception:
+    pass
+os.environ.setdefault("PYTHONNOUSERSITE", "1")
+
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -39,7 +51,11 @@ def load_atlas():
         st.error(f"Atlas file not found at {atlas_path}. Please run the pipeline first.")
         st.stop()
     
-    return ad.read_h5ad(atlas_path)
+    adata = ad.read_h5ad(atlas_path)
+    # Convenience: create a symbol column for gene lookup if possible
+    if "feature_name" in adata.var.columns and "symbol" not in adata.var.columns:
+        adata.var["symbol"] = adata.var["feature_name"].astype(str)
+    return adata
 
 
 def plot_umap_plotly(adata, color_by, title):
@@ -219,6 +235,8 @@ def main():
         
         # Choose coloring
         color_options = ["cell_type"]
+        if "cell_type_pred" in adata.obs.columns:
+            color_options.append("cell_type_pred")
         if "dataset_id" in adata.obs.columns:
             color_options.append("dataset_id")
         if "cancer_type" in adata.obs.columns:
@@ -240,26 +258,38 @@ def main():
     elif viz_type == "Gene Expression":
         st.header("Gene Expression")
         
-        # Gene selection
+        # Gene selection with symbol fallback
         gene = st.sidebar.text_input(
-            "Gene Symbol", 
+            "Gene Symbol or ID", 
             value="CD8A",
-            help="Enter a gene symbol (e.g., CD8A, CD4, FOXP3)"
+            help="Enter a gene symbol (e.g., CD8A) or an ID present in var_names"
         )
         
+        def resolve_gene_key(g: str) -> Optional[str]:
+            if g in adata.var_names:
+                return g
+            if "symbol" in adata.var.columns:
+                matches = adata.var.index[adata.var["symbol"].astype(str) == g]
+                if len(matches) > 0:
+                    return matches[0]
+            return None
+        
         if gene:
-            fig = plot_gene_expression(adata, gene, f"{gene} Expression")
-            if fig:
-                st.plotly_chart(fig, use_container_width=True)
+            key = resolve_gene_key(gene)
+            if key is None:
+                st.error(f"Gene {gene} not found in var_names or symbol column")
+            else:
+                fig = plot_gene_expression(adata, key, f"{gene} Expression")
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
                 
                 # Show expression statistics
-                if gene in adata.var_names:
-                    gene_idx = adata.var_names.get_loc(gene)
+                if key in adata.var_names:
+                    gene_idx = adata.var_names.get_loc(key)
                     if hasattr(adata.X, "toarray"):
                         expr_values = adata.X[:, gene_idx].toarray().flatten()
                     else:
                         expr_values = adata.X[:, gene_idx]
-                    
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Mean Expression", f"{np.mean(expr_values):.3f}")

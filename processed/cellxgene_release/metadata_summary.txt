@@ -1,0 +1,17 @@
+Single-cell Immune Atlas - Cellxgene Export
+==================================================
+
+Cells: 21,296
+Genes: 2,499
+
+Cell type distribution:
+
+Dataset distribution:
+  NSCLC_CENSUS: 15,458 (72.6%)
+  BREAST_CENSUS: 3,859 (18.1%)
+  MELANOMA_CENSUS: 1,979 (9.3%)
+
+Cancer type distribution:
+  NSCLC: 15,458 (72.6%)
+  Breast: 3,859 (18.1%)
+  melanoma: 1,979 (9.3%)

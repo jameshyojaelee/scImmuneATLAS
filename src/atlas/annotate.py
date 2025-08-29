@@ -32,39 +32,47 @@ def load_immune_markers() -> pd.DataFrame:
 
 
 def compute_marker_scores(
-    adata: ad.AnnData, 
-    markers_df: pd.DataFrame, 
-    min_pct: float = 0.1
+    adata: ad.AnnData,
+    markers_df: pd.DataFrame,
+    min_pct: float = 0.1,
 ) -> Dict[str, np.ndarray]:
-    """Compute marker scores for each cell type."""
-    scores = {}
-    
+    """Compute marker scores for each cell type.
+
+    Robust to var names being Ensembl IDs by matching markers against
+    `var['feature_name']` when available; otherwise uses `var_names`.
+    """
+    scores: Dict[str, np.ndarray] = {}
+
+    # Select the gene symbol series to match on
+    if "feature_name" in adata.var.columns:
+        symbol_series = adata.var["feature_name"].astype(str)
+    else:
+        symbol_series = pd.Series(adata.var_names, index=adata.var_names, dtype=str)
+
     for cell_type in markers_df["cell_type"].unique():
-        # Get markers for this cell type
         cell_markers = markers_df[markers_df["cell_type"] == cell_type]
-        
-        # Filter markers to those present in the dataset
-        available_markers = cell_markers[cell_markers["gene"].isin(adata.var_names)]
-        
-        if len(available_markers) == 0:
+        marker_symbols = cell_markers["gene"].astype(str).tolist()
+
+        # Find indices of marker symbols present in the dataset
+        present_mask = symbol_series.isin(marker_symbols)
+        marker_idx = np.where(present_mask.values)[0]
+
+        if marker_idx.size == 0:
             logging.warning(f"No markers found for {cell_type}")
             scores[cell_type] = np.zeros(adata.n_obs)
             continue
-        
-        # Compute mean expression of markers
-        marker_genes = available_markers["gene"].tolist()
-        marker_expr = adata[:, marker_genes].X
-        
-        if hasattr(marker_expr, "toarray"):
-            marker_expr = marker_expr.toarray()
-        
-        # Simple scoring: mean expression
-        cell_scores = np.mean(marker_expr, axis=1)
+
+        subset_X = adata[:, marker_idx].X
+        if hasattr(subset_X, "toarray"):
+            subset_X = subset_X.toarray()
+
+        cell_scores = np.mean(subset_X, axis=1)
         scores[cell_type] = cell_scores
-        
-        logging.info(f"{cell_type}: {len(marker_genes)} markers, "
-                    f"mean score: {np.mean(cell_scores):.3f}")
-    
+
+        logging.info(
+            f"{cell_type}: {len(marker_idx)} markers, mean score: {np.mean(cell_scores):.3f}"
+        )
+
     return scores
 
 
@@ -104,21 +112,29 @@ def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
     # Make a copy to avoid modifying original
     adata = adata.copy()
     
+    # If Census gene symbols are provided, keep a symbol view for matching
+    if "feature_name" in adata.var.columns:
+        adata.var["symbol"] = adata.var["feature_name"].astype(str)
+    else:
+        adata.var["symbol"] = np.array(adata.var_names, dtype=str)
+    
     # Load markers
     markers_df = load_immune_markers()
     
     # Compute marker scores
     scores = compute_marker_scores(adata, markers_df, min_pct)
     
-    # Add scores to obsm
+    # Add scores to obs
     for cell_type, score_array in scores.items():
         adata.obs[f"{cell_type}_score"] = score_array
     
-    # Assign cell types
-    cell_types = assign_cell_types(scores)
-    # Ensure clean string dtype then categorical for H5AD write compatibility
-    adata.obs["cell_type"] = cell_types.astype(str).fillna("Unknown")
-    adata.obs["cell_type"] = pd.Categorical(adata.obs["cell_type"])
+    # Assign predicted cell types
+    pred_cell_types = assign_cell_types(scores).astype(str)
+    adata.obs["cell_type_pred"] = pd.Categorical(pred_cell_types.fillna("Unknown"))
+    
+    # Preserve existing labels if present; otherwise use predictions
+    if "cell_type" not in adata.obs.columns or adata.obs["cell_type"].isna().all():
+        adata.obs["cell_type"] = adata.obs["cell_type_pred"]
     
     # Add broader compartment annotations
     compartment_map = {

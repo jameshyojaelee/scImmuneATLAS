@@ -1,0 +1,2 @@
+Downloaded at 2025-08-27 13:05:21.297472
+Config: {'id': 'NSCLC_CENSUS', 'modality': 'scRNA', 'url': 'data/raw/nsclc_census.h5ad', 'platform': 'mixed', 'cancer_type': 'NSCLC'}

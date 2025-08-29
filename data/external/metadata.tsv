@@ -1,0 +1,4 @@
+dataset_id	modality	platform	cancer_type	url
+MELANOMA_CENSUS	scRNA	mixed	melanoma	data/raw/melanoma_census.h5ad
+NSCLC_CENSUS	scRNA	mixed	NSCLC	data/raw/nsclc_census.h5ad
+BREAST_CENSUS	scRNA	mixed	Breast	data/raw/breast_census.h5ad
