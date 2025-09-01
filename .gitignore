@@ -24,6 +24,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+.micromamba/
 lib/
 lib64/
 parts/

@@ -1,4 +1,4 @@
-.PHONY: setup lint test demo all app
+.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch
 
 ENV_NAME=immune-atlas
 
@@ -24,3 +24,12 @@ all:
 
 app:
 	streamlit run app/streamlit_app.py
+
+env-bootstrap:
+	bash scripts/bootstrap_micromamba.sh
+
+fetch-no-cap:
+	bash scripts/fetch_cellxgene_no_cap.sh
+
+run-after-fetch:
+	bash scripts/run_pipeline_after_fetch.sh
