@@ -19,11 +19,12 @@ _os.environ.setdefault("PYTHONNOUSERSITE", "1")
 __version__ = "0.1.0"
 __author__ = "Single-cell Immune Atlas Contributors"
 
-from . import annotate, doublets, export, integration, io, qc, utils, viz
+# Avoid importing heavy submodules at package import time to reduce
+# transitive dependencies for lightweight entrypoints (e.g., fetch).
 
 __all__ = [
     "io",
-    "qc", 
+    "qc",
     "doublets",
     "integration",
     "annotate",

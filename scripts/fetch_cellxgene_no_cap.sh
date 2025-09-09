@@ -6,8 +6,22 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 # Prefer executing via micromamba to ensure correct Python/site-packages
 PY="python"
-if [[ -x "$PROJECT_ROOT/.micromamba/bin/micromamba" ]]; then
-  PY="$PROJECT_ROOT/.micromamba/bin/micromamba run -n immune-atlas python"
+# Detect micromamba (prefer project-local, fallback to PATH)
+MAMBA_BIN="$PROJECT_ROOT/.micromamba/bin/micromamba"
+if [[ -x "$MAMBA_BIN" ]]; then
+  MAMBA="$MAMBA_BIN"
+elif command -v micromamba >/dev/null 2>&1; then
+  MAMBA="$(command -v micromamba)"
+fi
+
+if [[ -n "${MAMBA:-}" ]]; then
+  ROOT_PREFIX="$PROJECT_ROOT/.micromamba"
+  if [[ -d "$ROOT_PREFIX" ]]; then
+    export MAMBA_ROOT_PREFIX="$ROOT_PREFIX"
+    PY="$MAMBA -r $ROOT_PREFIX run -n immune-atlas python"
+  else
+    PY="$MAMBA run -n immune-atlas python"
+  fi
   export PYTHONNOUSERSITE=1
 fi
 LOG_DIR="$PROJECT_ROOT/logs/fetch"

@@ -2,3 +2,9 @@ dataset_id	modality	platform	cancer_type	url
 MELANOMA_CENSUS	scRNA	mixed	melanoma	data/raw/melanoma_census.h5ad
 NSCLC_CENSUS	scRNA	mixed	NSCLC	data/raw/nsclc_census.h5ad
 BREAST_CENSUS	scRNA	mixed	Breast	data/raw/breast_census.h5ad
+RCC_NIVOLUMAB_CENSUS	scRNA	mixed	RCC	data/raw/rcc_nivo_census.h5ad
+NSCLC_PEMBROLIZUMAB_CENSUS	scRNA	mixed	NSCLC	data/raw/nsclc_pembro_census.h5ad
+NSCLC_NIVO_IPI_CENSUS	scRNA	mixed	NSCLC	data/raw/nsclc_nivo_ipi_census.h5ad
+UROTHELIAL_ATEZOLIZUMAB_CENSUS	scRNA	mixed	Urothelial	data/raw/urothelial_atezo_census.h5ad
+RCC_COMBINATION_CENSUS	scRNA	mixed	RCC	data/raw/rcc_combo_census.h5ad
+PDAC_ICI_CENSUS	scRNA	mixed	PDAC	data/raw/pdac_ici_census.h5ad

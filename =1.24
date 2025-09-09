@@ -1,0 +1,21 @@
+conda-forge/linux-64                                        Using cache
+conda-forge/noarch                                          Using cache
+bioconda/linux-64                                           Using cache
+bioconda/noarch                                             Using cache
+
+Pinned packages:
+
+  - python=3.10
+
+
+Transaction
+
+  Prefix: /gpfs/commons/home/jameslee/scImmuneATLAS/.micromamba/envs/immune-atlas
+
+  All requested packages already installed
+
+
+Transaction starting
+
+Transaction finished
+

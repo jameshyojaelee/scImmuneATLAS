@@ -29,14 +29,37 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def build_obs_filter(disease_terms: List[str], immune_only: bool) -> str:
-    # Use supported filter ops: ==, !=, in, and, or. Avoid lower()/contains() which are not guaranteed.
-    diseases_list = ", ".join([f"'{d}'" for d in disease_terms])
-    disease_clause = f"disease in [{diseases_list}]"
+def build_obs_filter(
+    disease_terms: List[str],
+    immune_only: bool,
+    tissue_terms: List[str] | None = None,
+    tissue_general_terms: List[str] | None = None,
+) -> str:
+    """Build a robust obs_value_filter using disease and optional tissue filters.
+
+    Uses only supported ops (==, !=, in, and, or). Avoids functions like lower()/contains().
+    """
+    clauses: list[str] = []
+
+    if disease_terms:
+        diseases_list = ", ".join([f"'{d}'" for d in disease_terms])
+        clauses.append(f"disease in [{diseases_list}]")
+
+    if tissue_terms:
+        tissues_list = ", ".join([f"'{t}'" for t in tissue_terms])
+        clauses.append(f"tissue in [{tissues_list}]")
+
+    if tissue_general_terms:
+        tgs_list = ", ".join([f"'{t}'" for t in tissue_general_terms])
+        clauses.append(f"tissue_general in [{tgs_list}]")
+
+    # Combine disease/tissue clauses with OR
+    core = " or ".join(f"({c})" for c in clauses) if clauses else "True"
+
+    # Optionally require primary data
     if immune_only:
-        # Best-effort: restrict to primary data only; immune-only not strictly filtered due to schema variety
-        return f"({disease_clause}) and is_primary_data == True"
-    return f"({disease_clause}) and is_primary_data == True"
+        return f"({core}) and is_primary_data == True"
+    return f"({core})"
 
 
 def fetch_subset(
@@ -47,6 +70,8 @@ def fetch_subset(
     immune_only: bool = True,
     organism: str = "homo_sapiens",
     max_cells: int | None = 50000,
+    tissue_terms: List[str] | None = None,
+    tissue_general_terms: List[str] | None = None,
 ) -> Path:
     import cellxgene_census
 
@@ -57,7 +82,12 @@ def fetch_subset(
         f"Opening CELLxGENE Census for organism={organism}, dataset_id={dataset_id}, immune_only={immune_only}"
     )
 
-    obs_filter = build_obs_filter(disease_terms, immune_only)
+    obs_filter = build_obs_filter(
+        disease_terms,
+        immune_only,
+        tissue_terms=tissue_terms,
+        tissue_general_terms=tissue_general_terms,
+    )
 
     with cellxgene_census.open_soma() as census:
         logging.info(f"Querying obs with filter: {obs_filter}")
@@ -77,7 +107,31 @@ def fetch_subset(
         )
 
     if adata.n_obs == 0:
-        raise RuntimeError("No cells matched the query; refine filters.")
+        # Fallback: relax primary filter and add common kidney tissue hints for RCC
+        logging.warning("No cells matched the query; retrying with relaxed filter")
+        alt_filter = build_obs_filter(
+            disease_terms,
+            immune_only=False,
+            tissue_terms=(tissue_terms or []) + ["kidney"],
+            tissue_general_terms=(tissue_general_terms or []) + ["kidney"],
+        )
+        with cellxgene_census.open_soma() as census:
+            logging.info(f"Retrying obs with filter: {alt_filter}")
+            adata = cellxgene_census.get_anndata(
+                census,
+                organism=organism,
+                obs_value_filter=alt_filter,
+                obs_column_names=[
+                    "cell_type",
+                    "tissue",
+                    "tissue_general",
+                    "disease",
+                    "assay",
+                    "is_primary_data",
+                ],
+            )
+        if adata.n_obs == 0:
+            raise RuntimeError("No cells matched after relaxed filter; refine terms.")
 
     # Subsample only if a positive cap was requested
     if max_cells is not None and max_cells > 0 and adata.n_obs > max_cells:
@@ -110,6 +164,16 @@ def main() -> None:
         help="One or more disease search terms (append multiple times)",
     )
     parser.add_argument("--out", required=True, help="Output .h5ad path")
+    parser.add_argument(
+        "--tissue-term",
+        action="append",
+        help="Optional tissue terms (append multiple times)",
+    )
+    parser.add_argument(
+        "--tissue-general-term",
+        action="append",
+        help="Optional tissue_general terms (append multiple times)",
+    )
     parser.add_argument("--no-immune-only", action="store_true", help="Do not attempt immune-only filter")
     parser.add_argument(
         "--max-cells",
@@ -140,10 +204,11 @@ def main() -> None:
         out_path=out_path,
         immune_only=immune_only,
         max_cells=max_cells,
+        tissue_terms=args.tissue_term or None,
+        tissue_general_terms=args.tissue_general_term or None,
     )
 
 
 if __name__ == "__main__":
     main()
-
 

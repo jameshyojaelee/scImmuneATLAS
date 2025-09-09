@@ -1,0 +1,2 @@
+Downloaded at 2025-09-01 19:18:50.258149
+Config: {'id': 'UROTHELIAL_ATEZOLIZUMAB_CENSUS', 'modality': 'scRNA', 'url': 'data/raw/urothelial_atezo_census.h5ad', 'platform': 'mixed', 'cancer_type': 'Urothelial'}
