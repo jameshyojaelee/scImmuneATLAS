@@ -8,6 +8,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import scanpy as sc
+from pathlib import Path
 
 from .utils import load_config, setup_logging, timer
 
@@ -46,6 +47,16 @@ def compute_marker_scores(
     # Select the gene symbol series to match on
     if "feature_name" in adata.var.columns:
         symbol_series = adata.var["feature_name"].astype(str)
+    elif getattr(adata, "raw", None) is not None and adata.raw is not None and "feature_name" in adata.raw.var.columns:
+        # Map feature_name from raw (pre-HVG) to current var index
+        raw_var = adata.raw.var
+        # Build a mapping from raw var_names to feature_name
+        raw_map = raw_var["feature_name"].astype(str)
+        # Align to current var_names; missing keys fall back to current var_names
+        mapped = []
+        for v in adata.var_names.astype(str):
+            mapped.append(raw_map.get(v, v))
+        symbol_series = pd.Series(mapped, index=adata.var_names, dtype=str)
     else:
         symbol_series = pd.Series(adata.var_names, index=adata.var_names, dtype=str)
 
@@ -74,6 +85,38 @@ def compute_marker_scores(
         )
 
     return scores
+
+
+def _augment_var_with_feature_names_from_interim(adata: ad.AnnData) -> None:
+    """If integrated AnnData lacks feature symbols, try to populate them
+    by scanning interim H5ADs for a mapping of feature_id/soma_joinid → feature_name.
+    """
+    if "feature_name" in adata.var.columns:
+        return
+    interim_dir = Path("data/interim")
+    if not interim_dir.exists():
+        return
+    mapping = {}
+    for f in sorted(interim_dir.glob("*.h5ad")):
+        try:
+            ds = ad.read_h5ad(f)
+            var = ds.var
+            name_col = "feature_name" if "feature_name" in var.columns else None
+            if name_col:
+                # map by feature_id
+                if "feature_id" in var.columns:
+                    keys = var["feature_id"].astype(str)
+                    names = var[name_col].astype(str)
+                    mapping.update(dict(zip(keys, names)))
+                # map by soma_joinid
+                if "soma_joinid" in var.columns:
+                    keys = var["soma_joinid"].astype(str)
+                    names = var[name_col].astype(str)
+                    mapping.update(dict(zip(keys, names)))
+        except Exception:
+            continue
+    if mapping:
+        adata.var["feature_name"] = [mapping.get(str(v), str(v)) for v in adata.var_names]
 
 
 def assign_cell_types(
@@ -108,10 +151,14 @@ def assign_cell_types(
 def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
     """Score markers and annotate cell types."""
     logging.info("Starting marker-based annotation")
-    
+
     # Make a copy to avoid modifying original
     adata = adata.copy()
-    
+
+    # Try to augment feature_name if missing using interim mappings
+    if "feature_name" not in adata.var.columns:
+        _augment_var_with_feature_names_from_interim(adata)
+
     # If Census gene symbols are provided, keep a symbol view for matching
     if "feature_name" in adata.var.columns:
         adata.var["symbol"] = adata.var["feature_name"].astype(str)

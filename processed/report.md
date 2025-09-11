@@ -3,13 +3,16 @@
 ## Configuration
 - Project: single_cell_immune_atlas
 - Organism: human
-- Integration method: scvi
+- Integration method: harmony
 - Seed: 1337
 
 ## Datasets
 - **MELANOMA_CENSUS**: melanoma (mixed)
 - **NSCLC_CENSUS**: NSCLC (mixed)
 - **BREAST_CENSUS**: Breast (mixed)
+- **NSCLC_PEMBROLIZUMAB_CENSUS**: NSCLC (mixed)
+- **NSCLC_NIVO_IPI_CENSUS**: NSCLC (mixed)
+- **RCC_COMBINATION_CENSUS**: RCC (mixed)
 
 ## QC Parameters
 - Min genes per cell: 200
@@ -17,7 +20,7 @@
 - Max mitochondrial %: 15
 
 ## Integration Parameters
-- Method: scvi
+- Method: harmony
 - Latent dimensions: 30
 - Batch key: dataset_id
 
