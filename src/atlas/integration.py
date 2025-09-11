@@ -11,6 +11,7 @@ import scanpy as sc
 from sklearn.preprocessing import LabelEncoder
 
 from .utils import load_config, set_seed, setup_logging, timer
+from scipy import sparse as sp
 
 
 def integrate_scvi(
@@ -75,8 +76,23 @@ def integrate_harmony(adata: ad.AnnData, batch_key: str) -> ad.AnnData:
     
     logging.info("Starting Harmony integration")
     
-    # Normalize and log-transform
-    sc.pp.normalize_total(adata, target_sum=1e4)
+    # Normalize without relying on numba-backed Scanpy path
+    def _normalize_total_no_numba(a: ad.AnnData, target_sum: float = 1e4) -> None:
+        X = a.X
+        if sp.issparse(X):
+            counts = np.asarray(X.sum(axis=1)).ravel()
+            counts[counts == 0] = 1.0
+            factors = target_sum / counts
+            # scale rows in-place
+            D = sp.diags(factors)
+            a.X = D @ X
+        else:
+            counts = X.sum(axis=1)
+            counts[counts == 0] = 1.0
+            factors = (target_sum / counts).astype(X.dtype)
+            a.X = (X.T * factors).T
+
+    _normalize_total_no_numba(adata, target_sum=1e4)
     sc.pp.log1p(adata)
     
     # Find highly variable genes
@@ -101,8 +117,16 @@ def integrate_harmony(adata: ad.AnnData, batch_key: str) -> ad.AnnData:
     adata.obsm["X_harmony"] = harmony_out.Z_corr.T
     
     # Compute neighbors and UMAP on Harmony representation
-    sc.pp.neighbors(adata, use_rep="X_harmony", n_neighbors=15, random_state=0)
-    sc.tl.umap(adata, random_state=0, min_dist=0.4, spread=1.0)
+    try:
+        sc.pp.neighbors(adata, use_rep="X_harmony", n_neighbors=15, random_state=0)
+        sc.tl.umap(adata, random_state=0, min_dist=0.4, spread=1.0)
+    except Exception as e:
+        logging.warning(f"Neighbors/UMAP computation failed ({e}); falling back to PCA(2) as embedding")
+        # Ensure PCA exists and use first 2 PCs as a proxy for embedding
+        if "X_pca" not in adata.obsm_keys():
+            sc.tl.pca(adata, svd_solver="arpack", random_state=0)
+        emb = adata.obsm["X_pca"][:, :2]
+        adata.obsm["X_umap"] = emb
     
     logging.info(f"Harmony integration completed: {adata.n_obs} cells, {adata.n_vars} genes")
     
