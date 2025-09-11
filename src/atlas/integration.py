@@ -14,10 +14,10 @@ from .utils import load_config, set_seed, setup_logging, timer
 
 
 def integrate_scvi(
-    adatas: List[ad.AnnData], 
-    batch_key: str, 
+    adatas: List[ad.AnnData],
+    batch_key: str,
     latent_dim: int = 30,
-    max_epochs: int = 200
+    max_epochs: int = 200,
 ) -> ad.AnnData:
     """Integrate datasets using scVI."""
     try:
@@ -128,9 +128,10 @@ def run_integration(config: dict) -> None:
     method = config["integration"]["method"]
     batch_key = config["integration"]["batch_key"]
     latent_dim = config["integration"]["latent_dim"]
+    max_epochs = config["integration"].get("max_epochs", 100)
     
     if method == "scvi":
-        adata_integrated = integrate_scvi(adatas, batch_key, latent_dim)
+        adata_integrated = integrate_scvi(adatas, batch_key, latent_dim, max_epochs=max_epochs)
     elif method == "harmony":
         # For Harmony, concatenate first
         adata_concat = ad.concat(adatas, join="outer", index_unique="-")

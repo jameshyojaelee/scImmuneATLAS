@@ -47,6 +47,7 @@ integration:
   method: "scvi"   # options: "scvi" | "harmony"
   latent_dim: 30
   batch_key: "dataset_id"
+  max_epochs: 50    # reduce for CPU-only runs; increase if GPU available
 
 neighbors:
   n_neighbors: 15
