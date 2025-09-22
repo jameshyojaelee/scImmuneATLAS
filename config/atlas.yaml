@@ -38,16 +38,33 @@ qc:
   min_genes: 200
   max_genes: 6000
   max_mt_pct: 15
+  min_counts: 500
+  max_counts: 50000
+  min_cells_per_gene: 3
+  qc_plots_dir: "processed/figures/qc"
 
 doublets:
   method: "scrublet"
   expected_doublet_rate: 0.06
+  mask_high_mt_genes: true
+  save_plots: true
+  scrublet_kwargs:
+    min_counts: 2
+    min_cells: 3
+    min_gene_variability_pctl: 85
+    n_prin_comps: 30
 
 integration:
   method: "harmony"   # options: "scvi" | "harmony"
   latent_dim: 30
   batch_key: "dataset_id"
   max_epochs: 50    # reduce for CPU-only runs; increase if GPU available
+  use_gpu: "auto"
+  shared_hvg: true
+  n_hvg: 3000
+  metrics:
+    - "silhouette"
+    - "lisi"
 
 neighbors:
   n_neighbors: 15
@@ -60,7 +77,21 @@ umap:
 annotation:
   strategy: "markers"
   min_pct: 0.1
+  score_method: "scanpy_score_genes"
+  min_confidence_pct: 0.75
+  reference_mapping: null
 
 outputs:
   cellxgene_dir: "processed/cellxgene_release"
   figures_dir: "processed/figures"
+  metrics_dir: "processed/metrics"
+
+report:
+  embed_figures: true
+
+benchmarking:
+  enabled: false
+  reference_atlas: null
+  metrics:
+    - "ari"
+    - "nmi"

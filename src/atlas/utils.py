@@ -5,7 +5,7 @@ import random
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Generator
+from typing import Any, Dict, Generator, List
 
 import numpy as np
 import pandas as pd
@@ -250,49 +250,149 @@ def create_minimal_demo(config_path: str) -> None:
 
 
 def generate_report(config_path: str) -> None:
-    """Generate a lightweight markdown report."""
+    """Generate a markdown report summarizing metrics and outputs."""
+    import json
+    import os
+
     config = load_config(config_path)
-    
-    report_content = f"""# Single-cell Immune Atlas Report
+    outputs_cfg = config.get("outputs", {})
+    report_cfg = config.get("report", {})
 
-## Configuration
-- Project: {config['project_name']}
-- Organism: {config['organism']}
-- Integration method: {config['integration']['method']}
-- Seed: {config['seed']}
+    metrics_dir = Path(outputs_cfg.get("metrics_dir", "processed/metrics"))
+    figures_dir = Path(outputs_cfg.get("figures_dir", "processed/figures"))
+    embed_figures = report_cfg.get("embed_figures", True)
 
-## Datasets
-"""
-    
-    for dataset in config['datasets']:
-        report_content += f"- **{dataset['id']}**: {dataset['cancer_type']} ({dataset['platform']})\n"
-    
-    report_content += f"""
-## QC Parameters
-- Min genes per cell: {config['qc']['min_genes']}
-- Max genes per cell: {config['qc']['max_genes']}
-- Max mitochondrial %: {config['qc']['max_mt_pct']}
+    lines: List[str] = []
+    lines.append("# Single-cell Immune Atlas Report")
+    lines.append("")
+    lines.append("## Configuration")
+    lines.append(f"- Project: {config['project_name']}")
+    lines.append(f"- Organism: {config['organism']}")
+    lines.append(f"- Integration method: {config['integration']['method']}")
+    lines.append(f"- Seed: {config['seed']}")
+    lines.append("")
 
-## Integration Parameters
-- Method: {config['integration']['method']}
-- Latent dimensions: {config['integration']['latent_dim']}
-- Batch key: {config['integration']['batch_key']}
+    lines.append("## Datasets")
+    for dataset in config["datasets"]:
+        lines.append(
+            f"- **{dataset['id']}** ({dataset['platform']}): {dataset['cancer_type']}"
+        )
+    lines.append("")
 
-## Outputs
-- Integrated atlas: `processed/integrated_atlas.h5ad`
-- Annotated atlas: `processed/integrated_annotated.h5ad`
-- Cellxgene export: `processed/cellxgene_release/atlas.h5ad`
-- Figures: `processed/figures/`
+    lines.append("## Quality Control Metrics")
+    header = "| Dataset | Cells (before → after) | Genes (before → after) | % Cells retained |"
+    divider = "|---|---|---|---|"
+    qc_rows = [header, divider]
+    for dataset in config["datasets"]:
+        summary_path = metrics_dir / f"{dataset['id']}_qc_summary.json"
+        if summary_path.exists():
+            summary = json.loads(summary_path.read_text())
+            qc_rows.append(
+                "| {id} | {cb:,} → {ca:,} | {gb:,} → {ga:,} | {pct:.1f}% |".format(
+                    id=dataset["id"],
+                    cb=summary.get("n_cells_before", 0),
+                    ca=summary.get("n_cells_after", 0),
+                    gb=summary.get("n_genes_before", 0),
+                    ga=summary.get("n_genes_after", 0),
+                    pct=summary.get("pct_cells_retained", 0.0),
+                )
+            )
+    if len(qc_rows) == 2:
+        lines.append("No QC summaries available yet.")
+    else:
+        lines.extend(qc_rows)
+    lines.append("")
 
-## Generated Figures
-- UMAP by cell type
-- UMAP by dataset
-- UMAP by cancer type
-- Cell type proportions by cancer type
-"""
-    
-    with open("processed/report.md", "w") as f:
-        f.write(report_content)
+    lines.append("## Doublet Detection")
+    header = "| Dataset | Doublets removed | Doublet rate | Threshold |"
+    divider = "|---|---|---|---|"
+    dbl_rows = [header, divider]
+    doublet_dir = metrics_dir / "doublets"
+    for dataset in config["datasets"]:
+        summary_path = doublet_dir / f"{dataset['id']}_doublet_summary.json"
+        if summary_path.exists():
+            summary = json.loads(summary_path.read_text())
+            dbl_rows.append(
+                "| {id} | {removed:,} | {rate:.2%} | {thr:.4f} |".format(
+                    id=dataset["id"],
+                    removed=summary.get("n_doublets", 0),
+                    rate=summary.get("doublet_rate", 0.0),
+                    thr=summary.get("threshold", float('nan')),
+                )
+            )
+    if len(dbl_rows) == 2:
+        lines.append("No doublet summaries available yet.")
+    else:
+        lines.extend(dbl_rows)
+    lines.append("")
+
+    integration_metrics_path = metrics_dir / "integration_metrics.json"
+    lines.append("## Integration Diagnostics")
+    if integration_metrics_path.exists():
+        metrics = json.loads(integration_metrics_path.read_text() or "{}");
+        if metrics:
+            for key, value in metrics.items():
+                lines.append(f"- {key}: {value:.4f}")
+        else:
+            lines.append("- Metrics placeholder generated (no metrics computed).")
+    else:
+        lines.append("- Integration metrics not yet generated.")
+    lines.append("")
+
+    annotation_summary_path = metrics_dir / "annotation_summary.json"
+    lines.append("## Annotation Summary")
+    if annotation_summary_path.exists():
+        summary = json.loads(annotation_summary_path.read_text() or "{}").get(
+            "cell_type_counts", {}
+        )
+        for cell_type, count in summary.items():
+            lines.append(f"- {cell_type}: {count:,} cells")
+    else:
+        lines.append("- Annotation summary not available.")
+    lines.append("")
+
+    benchmark_path = metrics_dir / "benchmarking.json"
+    lines.append("## Benchmarking")
+    if benchmark_path.exists():
+        bench = json.loads(benchmark_path.read_text() or "{}").items()
+        if bench:
+            for key, value in bench:
+                lines.append(f"- {key}: {value:.4f}")
+        else:
+            lines.append("- Benchmarking executed but produced no metrics.")
+    else:
+        lines.append("- Benchmarking not run.")
+    lines.append("")
+
+    if embed_figures:
+        lines.append("## Key Figures")
+        figure_names = [
+            "umap_by_cell_type.png",
+            "umap_by_dataset.png",
+            "umap_by_cancer_type.png",
+            "proportions_by_cancer_type.png",
+        ]
+        report_dir = Path("processed")
+        for name in figure_names:
+            fig_path = figures_dir / name
+            if fig_path.exists():
+                rel_path = os.path.relpath(fig_path, report_dir)
+                title = name.replace("_", " ").replace(".png", "").title()
+                lines.append(f"![{title}]({rel_path})")
+        lines.append("")
+
+    outputs_section = [
+        "## Outputs",
+        "- Integrated atlas: `processed/integrated_atlas.h5ad`",
+        "- Annotated atlas: `processed/integrated_annotated.h5ad`",
+        "- Cellxgene export: `processed/cellxgene_release/atlas.h5ad`",
+        f"- Metrics directory: `{metrics_dir}`",
+    ]
+    lines.extend(outputs_section)
+
+    report_path = Path("processed") / "report.md"
+    ensure_dir(report_path.parent)
+    report_path.write_text("\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

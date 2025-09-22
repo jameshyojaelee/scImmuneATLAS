@@ -1,0 +1,3 @@
+cell_id,patient_id,response_status,timepoint
+example_cell_1,P001,CR,baseline
+example_cell_2,P002,PD,week12

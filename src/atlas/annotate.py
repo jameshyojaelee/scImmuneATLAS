@@ -1,192 +1,270 @@
 """Cell type annotation functions for the Single-cell Immune Atlas."""
 
+from __future__ import annotations
+
+import json
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Iterable, List, Optional
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from pathlib import Path
 
-from .utils import load_config, setup_logging, timer
+from .utils import ensure_dir, load_config, setup_logging, timer
 
 
 def load_immune_markers() -> pd.DataFrame:
     """Load immune cell type markers."""
     markers_path = Path(__file__).parent / "markers" / "immune_markers_human.tsv"
-    
-    if not markers_path.exists():
+
+    if not markers_path.exists():  # pragma: no cover - depends on repository state
         raise FileNotFoundError(f"Markers file not found: {markers_path}")
-    
+
     markers_df = pd.read_csv(markers_path, sep="\t")
-    
-    # Validate columns
+
     required_cols = ["cell_type", "gene", "direction"]
-    if not all(col in markers_df.columns for col in required_cols):
+    missing = [col for col in required_cols if col not in markers_df.columns]
+    if missing:
         raise ValueError(f"Markers file must contain columns: {required_cols}")
-    
-    logging.info(f"Loaded {len(markers_df)} markers for {markers_df['cell_type'].nunique()} cell types")
-    
+
+    markers_df["direction"] = markers_df["direction"].str.lower()
+    logging.info(
+        "Loaded %d markers covering %d cell types",
+        len(markers_df),
+        markers_df["cell_type"].nunique(),
+    )
     return markers_df
 
 
-def compute_marker_scores(
-    adata: ad.AnnData,
-    markers_df: pd.DataFrame,
-    min_pct: float = 0.1,
-) -> Dict[str, np.ndarray]:
-    """Compute marker scores for each cell type.
-
-    Robust to var names being Ensembl IDs by matching markers against
-    `var['feature_name']` when available; otherwise uses `var_names`.
-    """
-    scores: Dict[str, np.ndarray] = {}
-
-    # Select the gene symbol series to match on
+def _augment_var_with_feature_names_from_interim(adata: ad.AnnData) -> None:
+    """Populate `feature_name` for integrated data if available in interim outputs."""
     if "feature_name" in adata.var.columns:
-        symbol_series = adata.var["feature_name"].astype(str)
-    elif getattr(adata, "raw", None) is not None and adata.raw is not None and "feature_name" in adata.raw.var.columns:
-        # Map feature_name from raw (pre-HVG) to current var index
-        raw_var = adata.raw.var
-        # Build a mapping from raw var_names to feature_name
-        raw_map = raw_var["feature_name"].astype(str)
-        # Align to current var_names; missing keys fall back to current var_names
-        mapped = []
-        for v in adata.var_names.astype(str):
-            mapped.append(raw_map.get(v, v))
-        symbol_series = pd.Series(mapped, index=adata.var_names, dtype=str)
+        return
+
+    interim_dir = Path("data/interim")
+    if not interim_dir.exists():  # pragma: no cover - depends on runtime execution
+        return
+
+    mapping = {}
+    for h5ad_path in sorted(interim_dir.glob("*.h5ad")):
+        try:
+            ds = ad.read_h5ad(h5ad_path)
+        except Exception:  # pragma: no cover - defensive
+            continue
+        var = ds.var
+        if "feature_name" not in var.columns:
+            continue
+        if "feature_id" in var.columns:
+            mapping.update(dict(zip(var["feature_id"].astype(str), var["feature_name"].astype(str))))
+        if "soma_joinid" in var.columns:
+            mapping.update(dict(zip(var["soma_joinid"].astype(str), var["feature_name"].astype(str))))
+
+    if mapping:
+        adata.var["feature_name"] = [mapping.get(str(v), str(v)) for v in adata.var_names]
+
+
+def _select_marker_symbols(adata: ad.AnnData) -> pd.Series:
+    if "feature_name" in adata.var.columns:
+        return adata.var["feature_name"].astype(str)
+    if getattr(adata, "raw", None) is not None and adata.raw is not None and "feature_name" in adata.raw.var.columns:
+        raw_map = adata.raw.var["feature_name"].astype(str)
+        mapped = [raw_map.get(v, v) for v in adata.var_names.astype(str)]
+        return pd.Series(mapped, index=adata.var_names, dtype=str)
+    return pd.Series(adata.var_names.astype(str), index=adata.var_names, dtype=str)
+
+
+def _score_cell_type(
+    adata: ad.AnnData,
+    positive_genes: Iterable[str],
+    negative_genes: Iterable[str],
+    score_name: str,
+    ctrl_size: int = 50,
+) -> np.ndarray:
+    """Score a cell type using positive/negative markers with background control."""
+    positive_genes = list(dict.fromkeys(g for g in positive_genes if g))
+    negative_genes = list(dict.fromkeys(g for g in negative_genes if g))
+
+    if not positive_genes and not negative_genes:
+        return np.zeros(adata.n_obs)
+
+    obs_key_pos = f"{score_name}_pos"
+    obs_key_neg = f"{score_name}_neg"
+
+    if positive_genes:
+        sc.tl.score_genes(
+            adata,
+            gene_list=positive_genes,
+            ctrl_size=min(ctrl_size, max(len(positive_genes), 1)),
+            score_name=obs_key_pos,
+            use_raw=False,
+        )
+        pos_scores = adata.obs[obs_key_pos].to_numpy()
     else:
-        symbol_series = pd.Series(adata.var_names, index=adata.var_names, dtype=str)
+        pos_scores = np.zeros(adata.n_obs)
 
-    for cell_type in markers_df["cell_type"].unique():
-        cell_markers = markers_df[markers_df["cell_type"] == cell_type]
-        marker_symbols = cell_markers["gene"].astype(str).tolist()
+    if negative_genes:
+        sc.tl.score_genes(
+            adata,
+            gene_list=negative_genes,
+            ctrl_size=min(ctrl_size, max(len(negative_genes), 1)),
+            score_name=obs_key_neg,
+            use_raw=False,
+        )
+        neg_scores = adata.obs[obs_key_neg].to_numpy()
+    else:
+        neg_scores = np.zeros(adata.n_obs)
 
-        # Find indices of marker symbols present in the dataset
-        present_mask = symbol_series.isin(marker_symbols)
-        marker_idx = np.where(present_mask.values)[0]
+    # Clean up intermediate columns
+    for col in (obs_key_pos, obs_key_neg):
+        if col in adata.obs:
+            del adata.obs[col]
 
-        if marker_idx.size == 0:
-            logging.warning(f"No markers found for {cell_type}")
+    return pos_scores - neg_scores
+
+
+def compute_marker_scores(adata: ad.AnnData, markers_df: pd.DataFrame) -> Dict[str, np.ndarray]:
+    """Compute marker-based scores for each cell type using gene-signature scoring."""
+    symbol_series = _select_marker_symbols(adata)
+
+    scores: Dict[str, np.ndarray] = {}
+    for cell_type, subset in markers_df.groupby("cell_type"):
+        pos_genes = subset.loc[subset["direction"] != "down", "gene"].astype(str).tolist()
+        neg_genes = subset.loc[subset["direction"] == "down", "gene"].astype(str).tolist()
+
+        pos_genes = [g for g in pos_genes if g in symbol_series.values]
+        neg_genes = [g for g in neg_genes if g in symbol_series.values]
+
+        if not pos_genes and not neg_genes:
+            logging.warning("No markers matched for %s", cell_type)
             scores[cell_type] = np.zeros(adata.n_obs)
             continue
 
-        subset_X = adata[:, marker_idx].X
-        if hasattr(subset_X, "toarray"):
-            subset_X = subset_X.toarray()
-
-        cell_scores = np.mean(subset_X, axis=1)
-        scores[cell_type] = cell_scores
-
+        scores[cell_type] = _score_cell_type(
+            adata,
+            positive_genes=pos_genes,
+            negative_genes=neg_genes,
+            score_name=f"{cell_type}_score_tmp",
+        )
         logging.info(
-            f"{cell_type}: {len(marker_idx)} markers, mean score: {np.mean(cell_scores):.3f}"
+            "%s: %d up markers, %d down markers",
+            cell_type,
+            len(pos_genes),
+            len(neg_genes),
         )
 
     return scores
 
 
-def _augment_var_with_feature_names_from_interim(adata: ad.AnnData) -> None:
-    """If integrated AnnData lacks feature symbols, try to populate them
-    by scanning interim H5ADs for a mapping of feature_id/soma_joinid → feature_name.
-    """
-    if "feature_name" in adata.var.columns:
-        return
-    interim_dir = Path("data/interim")
-    if not interim_dir.exists():
-        return
-    mapping = {}
-    for f in sorted(interim_dir.glob("*.h5ad")):
-        try:
-            ds = ad.read_h5ad(f)
-            var = ds.var
-            name_col = "feature_name" if "feature_name" in var.columns else None
-            if name_col:
-                # map by feature_id
-                if "feature_id" in var.columns:
-                    keys = var["feature_id"].astype(str)
-                    names = var[name_col].astype(str)
-                    mapping.update(dict(zip(keys, names)))
-                # map by soma_joinid
-                if "soma_joinid" in var.columns:
-                    keys = var["soma_joinid"].astype(str)
-                    names = var[name_col].astype(str)
-                    mapping.update(dict(zip(keys, names)))
-        except Exception:
-            continue
-    if mapping:
-        adata.var["feature_name"] = [mapping.get(str(v), str(v)) for v in adata.var_names]
-
-
-def assign_cell_types(
-    scores: Dict[str, np.ndarray], 
-    min_score: float = 0.1
+def _apply_confidence_thresholds(
+    scores_df: pd.DataFrame,
+    percentile: float,
 ) -> pd.Series:
-    """Assign cell types based on marker scores."""
-    # Convert scores to DataFrame
-    scores_df = pd.DataFrame(scores)
-    
-    # Find the cell type with highest score for each cell
+    """Determine confident assignments based on percentile thresholds per cell type."""
     best_matches = scores_df.idxmax(axis=1)
     best_scores = scores_df.max(axis=1)
-    
-    # Filter out low-confidence assignments
-    confident_mask = best_scores >= min_score
-    
-    # Assign "Unknown" to low-confidence cells
-    cell_types = best_matches.copy()
-    cell_types[~confident_mask] = "Unknown"
-    
-    # Log assignment statistics
-    type_counts = cell_types.value_counts()
-    logging.info("Cell type assignments:")
-    for cell_type, count in type_counts.items():
-        pct = 100 * count / len(cell_types)
-        logging.info(f"  {cell_type}: {count} cells ({pct:.1f}%)")
-    
-    return cell_types
+
+    thresholds = {
+        cell_type: np.quantile(scores_df[cell_type].dropna(), percentile)
+        if not scores_df[cell_type].dropna().empty
+        else np.inf
+        for cell_type in scores_df.columns
+    }
+
+    confident = best_matches.copy()
+    for idx, cell_type in best_matches.items():
+        score = best_scores.loc[idx]
+        threshold = thresholds.get(cell_type, np.inf)
+        if np.isnan(score) or score < threshold:
+            confident.loc[idx] = "Unknown"
+
+    return confident
 
 
-def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
+def _write_annotation_metrics(
+    adata: ad.AnnData,
+    outputs_cfg: Dict,
+    original_labels: Optional[pd.Series],
+    scores_df: pd.DataFrame,
+) -> None:
+    metrics_dir = Path(outputs_cfg.get("metrics_dir", "processed/metrics"))
+    ensure_dir(metrics_dir)
+
+    # Summary of final assignments
+    summary = adata.obs["cell_type"].value_counts().to_dict()
+    summary_path = metrics_dir / "annotation_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump({"cell_type_counts": summary}, f, indent=2)
+    logging.info("Saved annotation summary to %s", summary_path)
+
+    # Save per-cell scores for downstream QC
+    scores_path = metrics_dir / "annotation_scores.tsv"
+    scores_df.to_csv(scores_path, sep="\t")
+    logging.info("Saved annotation scores to %s", scores_path)
+
+    # Confusion matrix versus prior labels if available
+    confusion_path = metrics_dir / "annotation_confusion.tsv"
+    if original_labels is not None and not original_labels.isna().all():
+        confusion = pd.crosstab(
+            original_labels.fillna("Unlabeled"),
+            adata.obs["cell_type_pred"].astype(str),
+            dropna=False,
+        )
+        confusion.to_csv(confusion_path, sep="\t")
+        logging.info("Saved annotation confusion matrix to %s", confusion_path)
+    else:
+        confusion_path.write_text("# No reference labels available for confusion matrix\n")
+
+
+def score_and_annotate(
+    adata: ad.AnnData,
+    annotation_cfg: Dict,
+    outputs_cfg: Dict,
+) -> ad.AnnData:
     """Score markers and annotate cell types."""
     logging.info("Starting marker-based annotation")
 
-    # Make a copy to avoid modifying original
     adata = adata.copy()
+    original_labels = adata.obs["cell_type"].copy() if "cell_type" in adata.obs.columns else None
+    adata.obs["cell_type_initial"] = original_labels
 
-    # Try to augment feature_name if missing using interim mappings
     if "feature_name" not in adata.var.columns:
         _augment_var_with_feature_names_from_interim(adata)
 
-    # If Census gene symbols are provided, keep a symbol view for matching
-    if "feature_name" in adata.var.columns:
-        adata.var["symbol"] = adata.var["feature_name"].astype(str)
-    else:
-        adata.var["symbol"] = np.array(adata.var_names, dtype=str)
-    
-    # Load markers
     markers_df = load_immune_markers()
-    
-    # Compute marker scores
-    scores = compute_marker_scores(adata, markers_df, min_pct)
-    
-    # Add scores to obs
-    for cell_type, score_array in scores.items():
-        adata.obs[f"{cell_type}_score"] = score_array
-    
-    # Assign predicted cell types
-    pred_cell_types = assign_cell_types(scores).astype(str)
-    adata.obs["cell_type_pred"] = pd.Categorical(pred_cell_types.fillna("Unknown"))
-    
-    # Preserve existing labels if present; otherwise use predictions
-    if "cell_type" not in adata.obs.columns or adata.obs["cell_type"].isna().all():
+    scores = compute_marker_scores(adata, markers_df)
+
+    for cell_type, values in scores.items():
+        adata.obs[f"{cell_type}_score"] = values
+
+    scores_df = pd.DataFrame(scores, index=adata.obs_names)
+    confidence_pct = annotation_cfg.get("min_confidence_pct", 0.75)
+    predictions = _apply_confidence_thresholds(scores_df, confidence_pct)
+
+    adata.obs["cell_type_pred"] = pd.Categorical(predictions.astype(str))
+
+    # Merge with existing labels if provided
+    if original_labels is None or original_labels.isna().all():
         adata.obs["cell_type"] = adata.obs["cell_type_pred"]
-    
-    # Add broader compartment annotations
+    else:
+        updated = original_labels.astype(str).copy()
+        unknown_mask = updated.isna() | (updated.str.lower() == "unknown")
+        updated.loc[unknown_mask] = predictions.loc[unknown_mask]
+        adata.obs["cell_type"] = pd.Categorical(updated.fillna("Unknown"))
+
+    # Optional reference mapping fallback
+    reference_cfg = annotation_cfg.get("reference_mapping") or {}
+    label_key = reference_cfg.get("label_key")
+    if label_key and label_key in adata.obs:
+        unknown_mask = adata.obs["cell_type"].astype(str) == "Unknown"
+        fallback = adata.obs[label_key].astype(str)
+        adata.obs.loc[unknown_mask & fallback.notna(), "cell_type"] = fallback[unknown_mask & fallback.notna()]
+        logging.info("Applied reference mapping fallback from %s", label_key)
+
     compartment_map = {
         "CD8_T": "T_cell",
-        "CD4_T": "T_cell", 
+        "CD4_T": "T_cell",
         "Treg": "T_cell",
         "NK": "NK_cell",
         "B_cell": "B_cell",
@@ -194,45 +272,43 @@ def score_and_annotate(adata: ad.AnnData, min_pct: float = 0.1) -> ad.AnnData:
         "Mono": "Myeloid",
         "DC_cDC1": "Myeloid",
         "DC_cDC2": "Myeloid",
-        "Unknown": "Unknown"
+        "Unknown": "Unknown",
     }
-    
-    adata.obs["compartment"] = adata.obs["cell_type"].map(compartment_map).astype(str).fillna("Unknown")
-    adata.obs["compartment"] = pd.Categorical(adata.obs["compartment"])
-    
+    adata.obs["compartment"] = (
+        adata.obs["cell_type"].astype(str).map(compartment_map).fillna("Unknown")
+    )
+
+    _write_annotation_metrics(adata, outputs_cfg, original_labels, scores_df)
+
     logging.info("Annotation completed")
-    
     return adata
 
 
-def run_annotation(config: dict) -> None:
+def run_annotation(config: Dict) -> None:
     """Run cell type annotation."""
-    # Load integrated data
-    input_path = "processed/integrated_atlas.h5ad"
-    logging.info(f"Loading integrated data from {input_path}")
-    
+    input_path = Path("processed") / "integrated_atlas.h5ad"
+    logging.info("Loading integrated data from %s", input_path)
     adata = ad.read_h5ad(input_path)
-    
-    # Run annotation
-    adata_annotated = score_and_annotate(adata, config["annotation"]["min_pct"])
-    
-    # Save annotated data
-    output_path = "processed/integrated_annotated.h5ad"
+
+    annotation_cfg = config.get("annotation", {})
+    outputs_cfg = config.get("outputs", {})
+    adata_annotated = score_and_annotate(adata, annotation_cfg, outputs_cfg)
+
+    output_path = Path("processed") / "integrated_annotated.h5ad"
     adata_annotated.write(output_path)
-    
-    logging.info(f"Saved annotated atlas to {output_path}")
+    logging.info("Saved annotated atlas to %s", output_path)
 
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Run cell type annotation")
     parser.add_argument("--config", default="config/atlas.yaml", help="Config file path")
-    
+
     args = parser.parse_args()
-    
+
     setup_logging()
-    config = load_config(args.config)
-    
+    cfg = load_config(args.config)
+
     with timer("Cell type annotation"):
-        run_annotation(config)
+        run_annotation(cfg)

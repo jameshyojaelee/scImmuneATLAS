@@ -8,6 +8,14 @@ with open("config/atlas.yaml", "r") as f:
 # Extract dataset IDs
 DATASETS = [d["id"] for d in config["datasets"]]
 
+METRICS_DIR = Path(config["outputs"].get("metrics_dir", "processed/metrics"))
+FIGURES_DIR = Path(config["outputs"].get("figures_dir", "processed/figures"))
+QC_PLOTS_DIR = Path(config.get("qc", {}).get("qc_plots_dir", FIGURES_DIR / "qc"))
+DOUBLETS_METRICS_DIR = METRICS_DIR / "doublets"
+DOUBLETS_FIGURES_DIR = FIGURES_DIR / "doublets"
+
+BENCHMARK_TARGET = METRICS_DIR / "benchmarking.json" if config.get("benchmarking", {}).get("enabled", False) else None
+
 rule all:
     input:
         "processed/integrated_annotated.h5ad",
@@ -16,7 +24,10 @@ rule all:
         "processed/figures/umap_by_dataset.png",
         "processed/figures/umap_by_cancer_type.png",
         "processed/figures/proportions_by_cancer_type.png",
-        "processed/report.md"
+        "processed/report.md",
+        "processed/metrics/integration_metrics.json",
+        "processed/metrics/annotation_summary.json",
+        *( [str(BENCHMARK_TARGET)] if BENCHMARK_TARGET else [] )
 
 rule download_raw:
     output:
@@ -30,7 +41,11 @@ rule qc_one:
     input:
         "data/raw/{dataset}_downloaded.flag"
     output:
-        "data/interim/{dataset}.h5ad"
+        filtered="data/interim/{dataset}.h5ad",
+        qc_table="data/interim/{dataset}_qc.tsv",
+        qc_summary=lambda wildcards: str(METRICS_DIR / f"{wildcards.dataset}_qc_summary.json"),
+        qc_plot_umi=lambda wildcards: str(QC_PLOTS_DIR / f"{wildcards.dataset}_umi_violin.png"),
+        qc_plot_mt=lambda wildcards: str(QC_PLOTS_DIR / f"{wildcards.dataset}_mt_violin.png")
     params:
         config_file="config/atlas.yaml",
         dataset="{dataset}"
@@ -41,7 +56,10 @@ rule doublets_one:
     input:
         "data/interim/{dataset}.h5ad"
     output:
-        "data/interim/{dataset}.doublet_filtered.h5ad"
+        filtered="data/interim/{dataset}.doublet_filtered.h5ad",
+        annotated="data/interim/{dataset}.with_doublets.h5ad",
+        summary=lambda wildcards: str(DOUBLETS_METRICS_DIR / f"{wildcards.dataset}_doublet_summary.json"),
+        histogram=lambda wildcards: str(DOUBLETS_FIGURES_DIR / f"{wildcards.dataset}_scrublet_hist.png")
     params:
         config_file="config/atlas.yaml",
         dataset="{dataset}"
@@ -52,7 +70,8 @@ rule integrate:
     input:
         expand("data/interim/{dataset}.doublet_filtered.h5ad", dataset=DATASETS)
     output:
-        "processed/integrated_atlas.h5ad"
+        atlas="processed/integrated_atlas.h5ad",
+        metrics="processed/metrics/integration_metrics.json"
     params:
         config_file="config/atlas.yaml"
     shell:
@@ -62,7 +81,10 @@ rule annotate:
     input:
         "processed/integrated_atlas.h5ad"
     output:
-        "processed/integrated_annotated.h5ad"
+        atlas="processed/integrated_annotated.h5ad",
+        summary="processed/metrics/annotation_summary.json",
+        scores="processed/metrics/annotation_scores.tsv",
+        confusion="processed/metrics/annotation_confusion.tsv"
     params:
         config_file="config/atlas.yaml"
     shell:
@@ -90,6 +112,19 @@ rule figures:
         config_file="config/atlas.yaml"
     shell:
         "python -m src.atlas.viz --all --config {params.config_file}"
+
+rule benchmark:
+    input:
+        "processed/integrated_annotated.h5ad"
+    output:
+        str(METRICS_DIR / "benchmarking.json")
+    params:
+        config_file="config/atlas.yaml"
+    run:
+        if not config.get("benchmarking", {}).get("enabled", False):
+            open(output[0], "w").write("{}\n")
+        else:
+            shell("python -m src.atlas.benchmark --config {params.config_file}")
 
 rule report:
     input:

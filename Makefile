@@ -22,6 +22,9 @@ demo:
 all:
 	snakemake -j 8
 
+report:
+	python -m atlas.cli report
+
 app:
 	streamlit run app/streamlit_app.py
 
