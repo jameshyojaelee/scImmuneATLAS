@@ -90,7 +90,7 @@ def test_qc_metrics():
     adata_qc = qc.compute_qc_metrics(adata)
     
     assert "pct_counts_mt" in adata_qc.obs.columns
-    assert "n_genes" in adata_qc.obs.columns
+    assert "n_genes_by_counts" in adata_qc.obs.columns
     assert "total_counts" in adata_qc.obs.columns
     
     # Check that MT percentage is reasonable

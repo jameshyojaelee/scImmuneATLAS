@@ -10,12 +10,13 @@ scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standar
 
 ## ✨ Key Features
 
-- Multi-dataset integration: combine diverse TIL scRNA-seq datasets
-- QC + doublets: automated quality control and doublet detection
-- Batch correction: scVI (default) and Harmony
-- Annotation: marker-based immune cell type identification
-- Visualization: Streamlit app and cellxgene-compatible export
-- Reproducible: Snakemake workflow with tests and linting
+- Dataset ingest + fetch: local H5AD support and optional CELLxGENE Census downloader
+- QC dashboards: canonical gene/count thresholds, per-dataset summaries, violin plots saved to `processed/figures/qc/`
+- Doublet diagnostics: single-pass Scrublet with histograms + JSON summaries in `processed/metrics/doublets/`
+- Batch correction: shared-HVG integration with Harmony or scVI (GPU auto-detect) and mixing metrics (`processed/metrics/integration_metrics.json`)
+- Annotation: direction-aware marker scoring, confidence gating, optional reference fallback, and confusion matrices
+- Reporting: Markdown report embedding QC/doublet/integration/annotation metrics and key figures
+- Tooling: Snakemake pipeline, typed CLI (`scimmuneatlas`), unit tests, and portfolio-ready notebooks/docs
 
 ## 🔄 Analysis Workflow
 
@@ -23,16 +24,16 @@ scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standar
    - H5AD directly; MTX+genes/barcodes supported
    - Optional fetch from CELLxGENE Census
 2. QC + doublet removal
-   - Filters low-quality cells and detects doublets
-   - Output: `data/interim/`
+   - Applies gene/count/mito thresholds, exports per-dataset QC tables/plots (`data/interim/*_qc.tsv`, `processed/figures/qc/`)
+   - Runs Scrublet once per dataset, writes annotated + filtered H5ADs and metrics (`processed/metrics/doublets/`)
 3. Batch integration
-   - scVI (default) or Harmony
-   - Output: `processed/integrated_atlas.h5ad`
+   - Harmony or scVI (shared HVGs, GPU auto-detect)
+   - Output: `processed/integrated_atlas.h5ad` + integration diagnostics (`processed/metrics/integration_metrics.json`)
 4. Cell type annotation
-   - Marker-based scoring and assignment
-   - Output: `processed/integrated_annotated.h5ad`
-5. Visualization & export
-   - Figures, report, and cellxgene export
+   - Marker-direction-aware scoring with confidence gating and optional reference fallback
+   - Output: `processed/integrated_annotated.h5ad`, annotation scores, confusion matrices
+5. Visualization, benchmarking & export
+   - Figures, Markdown report with embedded metrics, optional benchmarking against reference atlas, cellxgene export
 
 ## 🚀 Quick Start
 
@@ -48,14 +49,22 @@ git clone https://github.com/YOUR_ORG_OR_USERNAME/scImmuneATLAS.git
 cd scImmuneATLAS
 ```
 
-2) Create environment
-```
-mamba env create -f env.yml   # GPU-enabled if CUDA is available
-mamba activate immune-atlas
-# CPU-only alternative:
-# conda env create -f env.cpu.yml && conda activate immune-atlas
-# No micromamba available? Use env.nomamba.yml (same packages, no micromamba helpers)
-```
+2) Create environment (choose one)
+
+- **Conda / Mamba**
+  ```
+  mamba env create -f env.yml   # GPU-enabled if CUDA is available
+  mamba activate immune-atlas
+  # CPU-only alternative:
+  # conda env create -f env.cpu.yml && conda activate immune-atlas
+  # No micromamba? use env.nomamba.yml
+  ```
+- **Python venv**
+  ```
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install -e .[dev] scanpy scrublet harmonypy scvi-tools scib matplotlib seaborn
+  ```
 
 3) Dev tooling
 ```
@@ -118,11 +127,12 @@ scImmuneATLAS/
 │   ├── interim/                 # Intermediate processing
 │   └── external/                # Reference metadata (e.g., metadata.tsv)
 ├── processed/
-│   ├── figures/                 # Publication-ready figures
+│   ├── figures/                 # Publication-ready figures (UMAPs, QC, doublets)
+│   ├── metrics/                 # JSON/TSV diagnostics (QC, doublets, integration, annotation, benchmarking)
 │   └── cellxgene_release/       # Viewer-compatible outputs
-├── notebooks/                   # Jupyter notebooks
+├── notebooks/                   # Interpretation + metadata notebooks
 ├── src/atlas/                   # Core analysis modules
-│   ├── io.py, qc.py, doublets.py, integration.py, annotate.py, viz.py, export.py
+│   ├── io.py, qc.py, doublets.py, integration.py, annotate.py, benchmark.py, viz.py, export.py, cli.py
 │   └── markers/immune_markers_human.tsv
 ├── app/                         # Streamlit web app
 │   └── streamlit_app.py
@@ -162,7 +172,22 @@ snakemake -j 8          # recommended
 make all                # Make wrapper
 ```
 
-### Individual steps
+The workflow materializes diagnostics throughout (`processed/metrics/`, `processed/figures/qc/`, `processed/metrics/doublets/`) and fails fast if expected artifacts are missing.
+
+### CLI shortcuts
+Install the package (editable mode) and drive each stage via the CLI:
+```
+scimmuneatlas qc --config config/atlas.yaml
+scimmuneatlas doublets --config config/atlas.yaml
+scimmuneatlas integrate --config config/atlas.yaml
+scimmuneatlas annotate --config config/atlas.yaml
+scimmuneatlas viz --config config/atlas.yaml --log-level INFO
+scimmuneatlas export --config config/atlas.yaml --cellxgene
+scimmuneatlas benchmark --config config/atlas.yaml
+scimmuneatlas report --config config/atlas.yaml
+```
+
+### Individual modules (optional)
 ```
 # Download (write metadata flags and a dataset table)
 python -m src.atlas.io --download --config config/atlas.yaml
@@ -174,10 +199,12 @@ python -m src.atlas.doublets --run --config config/atlas.yaml
 # Integration (override method if desired)
 python -m src.atlas.integration --method harmony --config config/atlas.yaml
 
-# Annotation, export, and figures
+# Annotation, export, figures, benchmarking, report
 python -m src.atlas.annotate --config config/atlas.yaml
-python -m src.atlas.export --cellxgene --config config/atlas.yaml
 python -m src.atlas.viz --all --config config/atlas.yaml
+python -m src.atlas.export --cellxgene --config config/atlas.yaml
+python -m src.atlas.benchmark --config config/atlas.yaml
+python -c "from src.atlas.utils import generate_report; generate_report('config/atlas.yaml')"
 ```
 
 ## 📤 Outputs
@@ -185,8 +212,9 @@ python -m src.atlas.viz --all --config config/atlas.yaml
 - `processed/integrated_atlas.h5ad`: Integrated atlas after batch correction
 - `processed/integrated_annotated.h5ad`: Annotated atlas with immune cell types
 - `processed/cellxgene_release/atlas.h5ad`: cellxgene-compatible release
-- `processed/figures/`: Publication-ready visualizations
-- `processed/report.md`: Analysis summary report
+- `processed/figures/`: Publication-ready visualizations (UMAPs, QC violins, Scrublet histograms)
+- `processed/metrics/`: QC summaries, doublet metrics, integration diagnostics, annotation scores, benchmarking results
+- `processed/report.md`: Analysis summary report with embedded tables and figures
 
 ## 🖥️ Interactive Explorer
 
@@ -202,6 +230,7 @@ Features: UMAP exploration, filtering, gene expression overlays, proportions, da
 - Lint: `make lint`
 - Tests: `make test`
 - Pre-commit hooks: `pre-commit install`
+- Local test run with venv: `source .venv/bin/activate && PYTHONPATH=$PWD/src pytest -q`
 
 ## ❓ FAQ & Troubleshooting
 
@@ -215,7 +244,16 @@ Features: UMAP exploration, filtering, gene expression overlays, proportions, da
   mamba install pytorch-cuda -c pytorch -c nvidia
   ```
 - Env isolation: user site-packages are disabled to avoid mixing with `~/.local`; prefer running within the provided Conda/mamba environment.
-- Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better.
+- Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better. Both stages share HVGs so diagnostics in `processed/metrics/integration_metrics.json` are comparable.
+- Missing metrics? Run stages through Snakemake or the CLI so QC/doublet/integration/annotation summaries populate `processed/metrics/`.
+
+## 📓 Portfolio Assets
+
+- `notebooks/atlas_interpretation.ipynb`: Guided notebook for showcasing biological insights
+- `notebooks/metadata_integration_example.ipynb`: Template for merging clinical/TCR metadata
+- `docs/video_walkthrough_script.md`: Script outline for a short project walkthrough
+- `docs/blog_post_outline.md`: Blog post scaffold detailing design decisions
+- `docs/portfolio_one_pager.md`: Printable summary for interviews and lab meetings
 
 ## 📚 Citation
 

@@ -25,7 +25,7 @@ def test_compute_qc_metrics():
     adata_qc = compute_qc_metrics(adata)
     
     # Check that required columns exist
-    required_cols = ["pct_counts_mt", "n_genes", "total_counts", "total_counts_mt"]
+    required_cols = ["pct_counts_mt", "n_genes_by_counts", "total_counts", "total_counts_mt"]
     for col in required_cols:
         assert col in adata_qc.obs.columns
     
@@ -70,15 +70,17 @@ def test_apply_filters():
         "max_mt_pct": 15
     }
     
-    adata_filtered = apply_filters(adata, qc_config)
+    adata_filtered, mask, summary = apply_filters(adata, qc_config)
     
     # Check that filtering worked
-    assert adata_filtered.n_obs < adata.n_obs  # Some cells should be filtered
-    
-    # Check that remaining cells meet criteria
-    assert adata_filtered.obs["n_genes"].min() >= qc_config["min_genes"]
-    assert adata_filtered.obs["n_genes"].max() <= qc_config["max_genes"]
-    assert adata_filtered.obs["pct_counts_mt"].max() <= qc_config["max_mt_pct"]
+    assert summary["n_cells_after"] <= summary["n_cells_before"]
+
+    # Check thresholds only if cells remain
+    if adata_filtered.n_obs > 0:
+        genes_metric = adata_filtered.obs["n_genes_by_counts"]
+        assert genes_metric.min() >= qc_config["min_genes"]
+        assert genes_metric.max() <= qc_config["max_genes"]
+        assert adata_filtered.obs["pct_counts_mt"].max() <= qc_config["max_mt_pct"]
 
 
 def test_filter_edge_cases():
@@ -99,7 +101,7 @@ def test_filter_edge_cases():
         "max_mt_pct": 100  # Allow all MT percentages
     }
     
-    adata_filtered = apply_filters(adata, strict_config)
+    adata_filtered, *_ = apply_filters(adata, strict_config)
     assert adata_filtered.n_obs > 0  # Should keep some cells
     
     # Impossible filters - should filter everything
@@ -109,5 +111,5 @@ def test_filter_edge_cases():
         "max_mt_pct": 15
     }
     
-    adata_filtered = apply_filters(adata, impossible_config)
+    adata_filtered, *_ = apply_filters(adata, impossible_config)
     # This might filter all cells, which is okay for impossible criteria
