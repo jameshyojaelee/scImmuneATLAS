@@ -8,6 +8,8 @@ datasets:
     url: "data/raw/melanoma_census.h5ad"
     platform: "mixed"
     cancer_type: "melanoma"
+    # Optional SHA256 hash for integrity verification (url_sha256, genes_sha256, etc.)
+    # url_sha256: "abc123..."
   - id: "NSCLC_CENSUS"
     modality: "scRNA"
     url: "data/raw/nsclc_census.h5ad"

@@ -1,6 +1,8 @@
 """I/O functions for the Single-cell Immune Atlas."""
 
+import hashlib
 import logging
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
@@ -16,38 +18,102 @@ from .schemas import validate_anndata
 from .utils import ensure_dir, load_config, setup_logging, timer
 
 
+def _compute_sha256(filepath: Path) -> str:
+    """Compute SHA256 hash of a file."""
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        # Read file in chunks to handle large files
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
 def download_if_needed(entry: Dict, outdir: Path) -> Dict:
-    """Download dataset files if they are URLs, otherwise use local paths."""
+    """
+    Download dataset files if they are URLs, otherwise use local paths.
+
+    Supports optional SHA256 verification via 'sha256' field in entry dict.
+    When a hash is present, downloads to temp file, verifies checksum,
+    then atomically moves to final destination.
+
+    Parameters
+    ----------
+    entry : Dict
+        Dataset entry with url/genes/barcodes/metadata paths and optional sha256 hashes
+    outdir : Path
+        Output directory for downloaded files
+
+    Returns
+    -------
+    Dict
+        Entry dict with URLs replaced by local paths
+    """
     result = entry.copy()
-    
+
     for key in ["url", "genes", "barcodes", "metadata"]:
         if key not in entry:
             continue
-            
+
         path_or_url = entry[key]
         parsed = urlparse(path_or_url)
-        
+
         if parsed.scheme in ["http", "https"]:
             # It's a URL - download it
             filename = Path(parsed.path).name
             if not filename:
                 filename = f"{entry['id']}_{key}.txt"
-            
+
             outpath = outdir / filename
-            
+
+            # Check for optional SHA256 hash for this key
+            hash_key = f"{key}_sha256"
+            expected_sha256 = entry.get(hash_key)
+
             if not outpath.exists():
                 logging.info(f"Downloading {path_or_url} to {outpath}")
                 response = requests.get(path_or_url)
                 response.raise_for_status()
-                
-                with open(outpath, "wb") as f:
-                    f.write(response.content)
-            
+
+                if expected_sha256:
+                    # Download to temp file, verify hash, then move atomically
+                    with tempfile.NamedTemporaryFile(
+                        mode="wb", delete=False, dir=outdir
+                    ) as tmp_file:
+                        tmp_path = Path(tmp_file.name)
+                        tmp_file.write(response.content)
+
+                    # Verify SHA256
+                    actual_sha256 = _compute_sha256(tmp_path)
+                    if actual_sha256 != expected_sha256:
+                        tmp_path.unlink()  # Clean up temp file
+                        raise ValueError(
+                            f"SHA256 mismatch for {key} in dataset {entry['id']}: "
+                            f"expected {expected_sha256}, got {actual_sha256}"
+                        )
+
+                    # Atomic move to final destination
+                    tmp_path.replace(outpath)
+                    logging.info(f"SHA256 verification passed for {outpath}")
+                else:
+                    # No hash verification - write directly
+                    with open(outpath, "wb") as f:
+                        f.write(response.content)
+            else:
+                # File already exists - optionally verify hash if provided
+                if expected_sha256:
+                    actual_sha256 = _compute_sha256(outpath)
+                    if actual_sha256 != expected_sha256:
+                        logging.warning(
+                            f"Existing file {outpath} has incorrect SHA256. "
+                            f"Expected {expected_sha256}, got {actual_sha256}. "
+                            f"Consider deleting and re-downloading."
+                        )
+
             result[key] = str(outpath)
         else:
             # It's a local path - use as is
             result[key] = path_or_url
-    
+
     return result
 
 

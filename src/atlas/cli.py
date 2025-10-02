@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
+from pathlib import Path
 from typing import Optional
 
 from . import annotate, benchmark, doublets, integration, qc, export, viz
+from .io import load_matrix
+from .schemas import validate_anndata
 from .utils import generate_report, load_config, setup_logging
 
 
@@ -50,6 +54,69 @@ def _run_report(config: dict, config_path: str) -> None:
     generate_report(config_path)
 
 
+def _run_validate_data(config: dict) -> None:
+    """Validate all datasets in the configuration."""
+    failures = []
+    successes = []
+
+    logging.info(f"Validating {len(config['datasets'])} datasets...")
+
+    for dataset_info in config["datasets"]:
+        dataset_id = dataset_info["id"]
+        try:
+            logging.info(f"Validating dataset: {dataset_id}")
+
+            # Check if file exists
+            url_path = Path(dataset_info["url"])
+            if not url_path.exists():
+                error_msg = f"Dataset file not found: {url_path}"
+                logging.error(f"  ✗ {dataset_id}: {error_msg}")
+                failures.append((dataset_id, error_msg))
+                continue
+
+            # Load and validate the dataset
+            adata = load_matrix(dataset_info)
+
+            # Validation already happens in load_matrix, but we can do additional checks
+            is_valid, error = validate_anndata(
+                adata, dataset_id=dataset_id, raise_on_error=False
+            )
+
+            if is_valid:
+                logging.info(
+                    f"  ✓ {dataset_id}: {adata.n_obs} cells, {adata.n_vars} genes"
+                )
+                successes.append(dataset_id)
+            else:
+                logging.error(f"  ✗ {dataset_id}: {error}")
+                failures.append((dataset_id, error))
+
+        except Exception as e:
+            error_msg = str(e)
+            logging.error(f"  ✗ {dataset_id}: {error_msg}")
+            failures.append((dataset_id, error_msg))
+
+    # Summary
+    print("\n" + "=" * 80)
+    print(f"Validation Summary: {len(successes)}/{len(config['datasets'])} passed")
+    print("=" * 80)
+
+    if successes:
+        print(f"\n✓ Passed ({len(successes)}):")
+        for dataset_id in successes:
+            print(f"  - {dataset_id}")
+
+    if failures:
+        print(f"\n✗ Failed ({len(failures)}):")
+        for dataset_id, error in failures:
+            print(f"  - {dataset_id}")
+            print(f"    Error: {error}")
+
+    # Exit with error code if any failures
+    if failures:
+        sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="scImmuneATLAS command-line interface")
     parser.add_argument("command", choices=[
@@ -61,6 +128,7 @@ def main() -> None:
         "viz",
         "benchmark",
         "report",
+        "validate-data",
     ])
     parser.add_argument("--config", default="config/atlas.yaml", help="Config file path")
     parser.add_argument("--dataset", help="Dataset ID (for qc/doublets)")
@@ -87,6 +155,8 @@ def main() -> None:
         _run_benchmark(config)
     elif args.command == "report":
         _run_report(config, args.config)
+    elif args.command == "validate-data":
+        _run_validate_data(config)
     else:  # pragma: no cover - safeguard
         raise ValueError(f"Unknown command: {args.command}")
 

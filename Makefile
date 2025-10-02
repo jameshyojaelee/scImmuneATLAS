@@ -1,4 +1,4 @@
-.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch
+.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch validate-data
 
 ENV_NAME=immune-atlas
 
@@ -24,6 +24,9 @@ all:
 
 report:
 	python -m atlas.cli report
+
+validate-data:
+	scimmuneatlas validate-data --config config/atlas.yaml
 
 app:
 	streamlit run app/streamlit_app.py
