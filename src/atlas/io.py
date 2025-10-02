@@ -12,6 +12,7 @@ import requests
 import scanpy as sc
 from scipy import io as scipy_io
 
+from .schemas import validate_anndata
 from .utils import ensure_dir, load_config, setup_logging, timer
 
 
@@ -93,7 +94,10 @@ def load_matrix(entry: Dict) -> ad.AnnData:
     # Make names unique
     adata.var_names_make_unique()
     adata.obs_names_make_unique()
-    
+
+    # Validate AnnData against schema
+    validate_anndata(adata, dataset_id=dataset_id, raise_on_error=True)
+
     return adata
 
 
