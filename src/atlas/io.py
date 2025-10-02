@@ -4,14 +4,12 @@ import hashlib
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 from urllib.parse import urlparse
 
 import anndata as ad
-import numpy as np
 import pandas as pd
 import requests
-import scanpy as sc
 from scipy import io as scipy_io
 
 from .schemas import validate_anndata

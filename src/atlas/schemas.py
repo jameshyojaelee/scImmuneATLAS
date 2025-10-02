@@ -7,7 +7,6 @@ from typing import Optional
 
 import anndata as ad
 import pandera as pa
-from pandera.typing import DataFrame
 
 
 # Define expected obs (cell metadata) schema

@@ -11,6 +11,7 @@ scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standar
 ## ✨ Key Features
 
 - Dataset ingest + fetch: local H5AD support and optional CELLxGENE Census downloader
+- **Data integrity guarantees**: Pandera schema validation for AnnData objects and optional SHA256 checksum verification for downloads
 - QC dashboards: canonical gene/count thresholds, per-dataset summaries, violin plots saved to `processed/figures/qc/`
 - Doublet diagnostics: single-pass Scrublet with histograms + JSON summaries in `processed/metrics/doublets/`
 - Batch correction: shared-HVG integration with Harmony or scVI (GPU auto-detect) and mixing metrics (`processed/metrics/integration_metrics.json`)
@@ -177,6 +178,7 @@ The workflow materializes diagnostics throughout (`processed/metrics/`, `process
 ### CLI shortcuts
 Install the package (editable mode) and drive each stage via the CLI:
 ```
+scimmuneatlas validate-data --config config/atlas.yaml   # Validate dataset integrity
 scimmuneatlas qc --config config/atlas.yaml
 scimmuneatlas doublets --config config/atlas.yaml
 scimmuneatlas integrate --config config/atlas.yaml
@@ -229,8 +231,36 @@ Features: UMAP exploration, filtering, gene expression overlays, proportions, da
 
 - Lint: `make lint`
 - Tests: `make test`
+- Validate data: `make validate-data`
 - Pre-commit hooks: `pre-commit install`
 - Local test run with venv: `source .venv/bin/activate && PYTHONPATH=$PWD/src pytest -q`
+
+### Data Validation & Integrity
+
+The pipeline includes built-in data validation to ensure dataset quality:
+
+**Schema Validation**: All datasets are validated against a Pandera schema that checks:
+- Required metadata columns (`dataset_id`, `cancer_type`, `platform`)
+- Non-empty observations and variables
+- Unique cell and gene identifiers
+
+**Checksum Verification**: Optional SHA256 hash verification for downloaded files. Add hashes to `config/atlas.yaml`:
+
+```yaml
+datasets:
+  - id: "EXAMPLE_DATASET"
+    url: "https://example.com/data.h5ad"
+    url_sha256: "abc123def456..."  # Optional SHA256 hash
+    cancer_type: "melanoma"
+    platform: "10x"
+```
+
+**Validation CLI**: Run `make validate-data` or `scimmuneatlas validate-data` to check all datasets. The command:
+- Verifies file existence
+- Loads each dataset
+- Validates schema compliance
+- Reports actionable error messages
+- Exits with non-zero code on failures (CI-friendly)
 
 ## ❓ FAQ & Troubleshooting
 

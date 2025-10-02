@@ -28,6 +28,7 @@ dependencies = [
     "streamlit",
     "pyyaml",
     "requests",
+    "pandera",
 ]
 
 [project.scripts]
