@@ -8,7 +8,7 @@ A comprehensive, production-ready single-cell immune atlas for tumor-infiltratin
 
 scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standardized, reproducible pipeline for immune cell analysis in cancer contexts.
 
-## ✨ Key Features
+## Key Features
 
 - Dataset ingest + fetch: local H5AD support and optional CELLxGENE Census downloader
 - **Data integrity guarantees**: Pandera schema validation for AnnData objects and optional SHA256 checksum verification for downloads
@@ -19,7 +19,7 @@ scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standar
 - Reporting: Markdown report embedding QC/doublet/integration/annotation metrics and key figures
 - Tooling: Snakemake pipeline, typed CLI (`scimmuneatlas`), unit tests, and portfolio-ready notebooks/docs
 
-## 🔄 Analysis Workflow
+## Analysis Workflow
 
 1. Data ingestion
    - H5AD directly; MTX+genes/barcodes supported
@@ -36,7 +36,7 @@ scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standar
 5. Visualization, benchmarking & export
    - Figures, Markdown report with embedded metrics, optional benchmarking against reference atlas, cellxgene export
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
@@ -145,7 +145,7 @@ scImmuneATLAS/
 └── logs/                        # Logs from fetch/pipeline
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 Edit `config/atlas.yaml` to customize analysis. Example:
 ```
@@ -165,7 +165,7 @@ annotation:
   marker_genes: "src/atlas/markers/immune_markers_human.tsv"
 ```
 
-## 🏃‍♂️ Running the Pipeline
+## Running the Pipeline
 
 ### Full pipeline
 ```
@@ -209,7 +209,7 @@ python -m src.atlas.benchmark --config config/atlas.yaml
 python -c "from src.atlas.utils import generate_report; generate_report('config/atlas.yaml')"
 ```
 
-## 📤 Outputs
+## Outputs
 
 - `processed/integrated_atlas.h5ad`: Integrated atlas after batch correction
 - `processed/integrated_annotated.h5ad`: Annotated atlas with immune cell types
@@ -218,7 +218,7 @@ python -c "from src.atlas.utils import generate_report; generate_report('config/
 - `processed/metrics/`: QC summaries, doublet metrics, integration diagnostics, annotation scores, benchmarking results
 - `processed/report.md`: Analysis summary report with embedded tables and figures
 
-## 🖥️ Interactive Explorer
+## Interactive Explorer
 
 Launch Streamlit app:
 ```
@@ -227,7 +227,7 @@ make app
 
 Features: UMAP exploration, filtering, gene expression overlays, proportions, dataset summary.
 
-## 🧪 Development
+## Development
 
 - Lint: `make lint`
 - Tests: `make test`
@@ -262,7 +262,7 @@ datasets:
 - Reports actionable error messages
 - Exits with non-zero code on failures (CI-friendly)
 
-## ❓ FAQ & Troubleshooting
+## FAQ & Troubleshooting
 
 - Memory: use backed mode for large datasets
   ```python
@@ -277,7 +277,7 @@ datasets:
 - Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better. Both stages share HVGs so diagnostics in `processed/metrics/integration_metrics.json` are comparable.
 - Missing metrics? Run stages through Snakemake or the CLI so QC/doublet/integration/annotation summaries populate `processed/metrics/`.
 
-## 📓 Portfolio Assets
+## Portfolio Assets
 
 - `notebooks/atlas_interpretation.ipynb`: Guided notebook for showcasing biological insights
 - `notebooks/metadata_integration_example.ipynb`: Template for merging clinical/TCR metadata
@@ -285,7 +285,7 @@ datasets:
 - `docs/blog_post_outline.md`: Blog post scaffold detailing design decisions
 - `docs/portfolio_one_pager.md`: Printable summary for interviews and lab meetings
 
-## 📚 Citation
+## Citation
 
 ```
 @software{scImmuneATLAS,
@@ -296,7 +296,7 @@ datasets:
 }
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1) Fork the repository  
 2) Create a feature branch (`git checkout -b feature/amazing-feature`)  
@@ -305,6 +305,6 @@ datasets:
 5) Push (`git push origin feature/amazing-feature`)  
 6) Open a Pull Request
 
-## 📄 License
+## License
 
 MIT License — see `LICENSE`.
