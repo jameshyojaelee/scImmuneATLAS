@@ -1,4 +1,4 @@
-.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch validate-data
+.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch validate-data pipeline
 
 ENV_NAME=immune-atlas
 
@@ -20,7 +20,10 @@ demo:
 	python -c "from src.atlas.utils import run_demo; run_demo('config/atlas.yaml')"
 
 all:
-	snakemake -j 8
+	scimmuneatlas pipeline --config config/atlas.yaml --jobs 8
+
+pipeline:
+	scimmuneatlas pipeline --config config/atlas.yaml
 
 report:
 	python -m atlas.cli report
@@ -37,5 +40,4 @@ env-bootstrap:
 fetch-no-cap:
 	bash scripts/fetch_cellxgene_no_cap.sh
 
-run-after-fetch:
-	bash scripts/run_pipeline_after_fetch.sh
+run-after-fetch: pipeline

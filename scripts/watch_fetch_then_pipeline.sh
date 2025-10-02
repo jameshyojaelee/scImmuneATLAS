@@ -5,6 +5,14 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 LOG_DIR="$PROJECT_ROOT/logs"
 LOG="$LOG_DIR/orchestrator.log"
 ROOT_PREFIX="$PROJECT_ROOT/.micromamba"
+MAMBA_BIN="$ROOT_PREFIX/bin/micromamba"
+CLI="scimmuneatlas"
+
+if [[ -x "$MAMBA_BIN" ]]; then
+  CLI="$MAMBA_BIN -r $ROOT_PREFIX run -n immune-atlas scimmuneatlas"
+elif command -v micromamba >/dev/null 2>&1; then
+  CLI="$(command -v micromamba) run -n immune-atlas scimmuneatlas"
+fi
 
 mkdir -p "$LOG_DIR"
 
@@ -23,7 +31,6 @@ if command -v micromamba >/dev/null 2>&1; then
 fi
 
 echo "[$(date +%F' '%T)] Starting pipeline..." >>"$LOG"
-bash "$PROJECT_ROOT/scripts/run_pipeline_after_fetch.sh" >>"$LOG" 2>&1 || true
+$CLI pipeline --config "$PROJECT_ROOT/config/atlas.yaml" --jobs 8 >>"$LOG" 2>&1 || true
 echo "[$(date +%F' '%T)] Watcher done" >>"$LOG"
-
 

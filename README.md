@@ -89,7 +89,7 @@ Use the example `.h5ad` inputs in `data/raw/` referenced by `config/atlas.yaml`,
 ```
 make env-bootstrap             # optional: bootstrap micromamba locally
 make fetch-no-cap              # runs scripts/fetch_cellxgene_no_cap.sh (parallel jobs)
-make run-after-fetch           # or: bash scripts/run_pipeline_after_fetch.sh
+make run-after-fetch           # alias for scimmuneatlas pipeline
 # Alternatively: scripts/watch_fetch_then_pipeline.sh to auto-start after fetch
 ```
 
@@ -133,14 +133,14 @@ scImmuneATLAS/
 │   └── cellxgene_release/       # Viewer-compatible outputs
 ├── notebooks/                   # Interpretation + metadata notebooks
 ├── src/atlas/                   # Core analysis modules
-│   ├── io.py, qc.py, doublets.py, integration.py, annotate.py, benchmark.py, viz.py, export.py, cli.py
+│   ├── io.py, qc.py, doublets.py, integration.py, annotate.py, benchmark.py, viz.py, export.py, cli.py, workflow.py
 │   └── markers/immune_markers_human.tsv
 ├── app/                         # Streamlit web app
 │   └── streamlit_app.py
 ├── scripts/                     # Helper scripts
 │   ├── fetch_cellxgene_no_cap.sh
-│   ├── run_pipeline_after_fetch.sh
-│   └── watch_fetch_then_pipeline.sh
+│   ├── watch_fetch_then_pipeline.sh
+│   └── bootstrap_micromamba.sh
 ├── tests/                       # Unit tests
 └── logs/                        # Logs from fetch/pipeline
 ```
@@ -179,6 +179,7 @@ The workflow materializes diagnostics throughout (`processed/metrics/`, `process
 Install the package (editable mode) and drive each stage via the CLI:
 ```
 scimmuneatlas validate-data --config config/atlas.yaml   # Validate dataset integrity
+scimmuneatlas pipeline --config config/atlas.yaml --jobs 8
 scimmuneatlas qc --config config/atlas.yaml
 scimmuneatlas doublets --config config/atlas.yaml
 scimmuneatlas integrate --config config/atlas.yaml

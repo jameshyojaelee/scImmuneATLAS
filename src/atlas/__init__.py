@@ -31,4 +31,5 @@ __all__ = [
     "viz",
     "export",
     "utils",
+    "workflow",
 ]

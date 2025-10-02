@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import annotate, benchmark, doublets, integration, qc, export, viz
+from . import annotate, benchmark, doublets, export, integration, qc, viz, workflow
 from .io import download_if_needed, load_matrix
 from .schemas import validate_anndata
 from .utils import generate_report, load_config, setup_logging, ensure_dir
@@ -52,6 +52,20 @@ def _run_benchmark(config: dict) -> None:
 
 def _run_report(config: dict, config_path: str) -> None:
     generate_report(config_path)
+
+
+def _run_pipeline_cli(
+    config: dict,
+    config_path: str,
+    jobs: Optional[int],
+    force_python: bool,
+) -> None:
+    workflow.run_pipeline(
+        config,
+        config_path=config_path,
+        jobs=jobs,
+        use_snakemake=False if force_python else None,
+    )
 
 
 def _run_validate_data(config: dict) -> None:
@@ -134,11 +148,22 @@ def main() -> None:
         "viz",
         "benchmark",
         "report",
+        "pipeline",
         "validate-data",
     ])
     parser.add_argument("--config", default="config/atlas.yaml", help="Config file path")
     parser.add_argument("--dataset", help="Dataset ID (for qc/doublets)")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        help="Number of parallel jobs when running the Snakemake pipeline",
+    )
+    parser.add_argument(
+        "--force-python",
+        action="store_true",
+        help="Skip Snakemake and run the Python fallback pipeline",
+    )
 
     args = parser.parse_args()
 
@@ -161,6 +186,8 @@ def main() -> None:
         _run_benchmark(config)
     elif args.command == "report":
         _run_report(config, args.config)
+    elif args.command == "pipeline":
+        _run_pipeline_cli(config, args.config, args.jobs, args.force_python)
     elif args.command == "validate-data":
         _run_validate_data(config)
     else:  # pragma: no cover - safeguard
