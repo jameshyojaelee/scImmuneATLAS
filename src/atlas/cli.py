@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 from . import annotate, benchmark, doublets, integration, qc, export, viz
-from .io import load_matrix
+from .io import download_if_needed, load_matrix
 from .schemas import validate_anndata
-from .utils import generate_report, load_config, setup_logging
+from .utils import generate_report, load_config, setup_logging, ensure_dir
 
 
 def _run_qc(config: dict, dataset: Optional[str]) -> None:
@@ -59,6 +59,9 @@ def _run_validate_data(config: dict) -> None:
     failures = []
     successes = []
 
+    raw_dir = Path(config.get("paths", {}).get("raw_dir", "data/raw"))
+    ensure_dir(raw_dir)
+
     logging.info(f"Validating {len(config['datasets'])} datasets...")
 
     for dataset_info in config["datasets"]:
@@ -66,8 +69,11 @@ def _run_validate_data(config: dict) -> None:
         try:
             logging.info(f"Validating dataset: {dataset_id}")
 
+            # Ensure remote assets are materialized locally if needed
+            resolved_entry = download_if_needed(dataset_info, raw_dir)
+
             # Check if file exists
-            url_path = Path(dataset_info["url"])
+            url_path = Path(resolved_entry["url"])
             if not url_path.exists():
                 error_msg = f"Dataset file not found: {url_path}"
                 logging.error(f"  ✗ {dataset_id}: {error_msg}")
@@ -75,7 +81,7 @@ def _run_validate_data(config: dict) -> None:
                 continue
 
             # Load and validate the dataset
-            adata = load_matrix(dataset_info)
+            adata = load_matrix(resolved_entry)
 
             # Validation already happens in load_matrix, but we can do additional checks
             is_valid, error = validate_anndata(

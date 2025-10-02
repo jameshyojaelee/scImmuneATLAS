@@ -171,6 +171,40 @@ def test_download_with_sha256_verification():
         assert result["url"] == str(test_file)
 
 
+def test_download_if_needed_remote(monkeypatch):
+    """Test that remote URLs are downloaded, verified, and materialized locally."""
+
+    class DummyResponse:
+        def __init__(self, payload: bytes) -> None:
+            self.content = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+    content = b"remote test payload"
+    expected_hash = hashlib.sha256(content).hexdigest()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        entry = {
+            "id": "remote_dataset",
+            "url": "https://example.com/data.h5ad",
+            "url_sha256": expected_hash,
+            "cancer_type": "melanoma",
+        }
+
+        def fake_get(url: str) -> DummyResponse:
+            assert url == entry["url"]
+            return DummyResponse(content)
+
+        monkeypatch.setattr("requests.get", fake_get)
+
+        result = download_if_needed(entry, Path(tmpdir))
+        out_path = Path(result["url"])
+
+        assert out_path.exists()
+        assert out_path.read_bytes() == content
+
+
 def test_load_matrix_with_validation():
     """Test that load_matrix validates AnnData."""
     with tempfile.TemporaryDirectory() as tmpdir:
