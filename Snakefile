@@ -1,12 +1,16 @@
 import yaml
 from pathlib import Path
 
+from src.atlas.workflow import collect_pipeline_targets, dataset_ids
+
 # Load configuration
 with open("config/atlas.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 # Extract dataset IDs
-DATASETS = [d["id"] for d in config["datasets"]]
+DATASETS = dataset_ids(config)
+
+PIPELINE_TARGETS = collect_pipeline_targets(config)
 
 METRICS_DIR = Path(config["outputs"].get("metrics_dir", "processed/metrics"))
 FIGURES_DIR = Path(config["outputs"].get("figures_dir", "processed/figures"))
@@ -14,20 +18,9 @@ QC_PLOTS_DIR = Path(config.get("qc", {}).get("qc_plots_dir", FIGURES_DIR / "qc")
 DOUBLETS_METRICS_DIR = METRICS_DIR / "doublets"
 DOUBLETS_FIGURES_DIR = FIGURES_DIR / "doublets"
 
-BENCHMARK_TARGET = METRICS_DIR / "benchmarking.json" if config.get("benchmarking", {}).get("enabled", False) else None
-
 rule all:
     input:
-        "processed/integrated_annotated.h5ad",
-        "processed/cellxgene_release/atlas.h5ad",
-        "processed/figures/umap_by_cell_type.png",
-        "processed/figures/umap_by_dataset.png",
-        "processed/figures/umap_by_cancer_type.png",
-        "processed/figures/proportions_by_cancer_type.png",
-        "processed/report.md",
-        "processed/metrics/integration_metrics.json",
-        "processed/metrics/annotation_summary.json",
-        *( [str(BENCHMARK_TARGET)] if BENCHMARK_TARGET else [] )
+        PIPELINE_TARGETS
 
 rule download_raw:
     output:

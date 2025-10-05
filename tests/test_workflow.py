@@ -82,4 +82,31 @@ def test_run_pipeline_snakemake(monkeypatch, tmp_path):
 
     assert recorded["cmd"] == ["snakemake", "-j", "4"]
     assert recorded["check"] is True
-*** End Patch
+
+
+def test_collect_pipeline_targets(tmp_path):
+    config = {
+        "outputs": {
+            "metrics_dir": str(tmp_path / "metrics"),
+            "figures_dir": str(tmp_path / "figures"),
+            "cellxgene_dir": str(tmp_path / "cellxgene"),
+        },
+        "benchmarking": {"enabled": True},
+    }
+
+    targets = workflow.collect_pipeline_targets(config)
+
+    expected = {
+        str(tmp_path / "metrics" / "integration_metrics.json"),
+        str(tmp_path / "metrics" / "annotation_summary.json"),
+        str(tmp_path / "metrics" / "benchmarking.json"),
+        str(tmp_path / "figures" / "umap_by_cell_type.png"),
+        str(tmp_path / "figures" / "umap_by_dataset.png"),
+        str(tmp_path / "figures" / "umap_by_cancer_type.png"),
+        str(tmp_path / "figures" / "proportions_by_cancer_type.png"),
+        str(tmp_path / "cellxgene" / "atlas.h5ad"),
+        "processed/integrated_annotated.h5ad",
+        "processed/report.md",
+    }
+
+    assert set(targets) == expected

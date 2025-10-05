@@ -18,16 +18,16 @@ def _run_qc(config: dict, dataset: Optional[str]) -> None:
     if dataset:
         qc.process_dataset_qc(dataset, config)
     else:
-        for dataset_info in config["datasets"]:
-            qc.process_dataset_qc(dataset_info["id"], config)
+        for dataset_id in workflow.dataset_ids(config):
+            qc.process_dataset_qc(dataset_id, config)
 
 
 def _run_doublets(config: dict, dataset: Optional[str]) -> None:
     if dataset:
         doublets.process_dataset_doublets(dataset, config)
     else:
-        for dataset_info in config["datasets"]:
-            doublets.process_dataset_doublets(dataset_info["id"], config)
+        for dataset_id in workflow.dataset_ids(config):
+            doublets.process_dataset_doublets(dataset_id, config)
 
 
 def _run_integration(config: dict) -> None:

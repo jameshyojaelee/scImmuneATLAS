@@ -6,10 +6,40 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from . import annotate, benchmark, doublets, export, integration, qc, viz, utils
 from .utils import ensure_dir, timer
+
+
+def dataset_ids(config: Dict) -> List[str]:
+    """Return dataset identifiers declared in the configuration."""
+    return [dataset["id"] for dataset in config.get("datasets", [])]
+
+
+def collect_pipeline_targets(config: Dict) -> List[str]:
+    """Materialized artifacts that define a successful pipeline run."""
+    outputs_cfg = config.get("outputs", {})
+    metrics_dir = Path(outputs_cfg.get("metrics_dir", "processed/metrics"))
+    figures_dir = Path(outputs_cfg.get("figures_dir", "processed/figures"))
+    cellxgene_dir = Path(outputs_cfg.get("cellxgene_dir", "processed/cellxgene_release"))
+
+    targets: List[Path] = [
+        Path("processed/integrated_annotated.h5ad"),
+        cellxgene_dir / "atlas.h5ad",
+        figures_dir / "umap_by_cell_type.png",
+        figures_dir / "umap_by_dataset.png",
+        figures_dir / "umap_by_cancer_type.png",
+        figures_dir / "proportions_by_cancer_type.png",
+        Path("processed/report.md"),
+        metrics_dir / "integration_metrics.json",
+        metrics_dir / "annotation_summary.json",
+    ]
+
+    if config.get("benchmarking", {}).get("enabled", False):
+        targets.append(metrics_dir / "benchmarking.json")
+
+    return [str(path) for path in targets]
 
 
 def _attach_file_logger(log_dir: Path, filename: str = "pipeline.log") -> logging.Handler:
@@ -59,9 +89,7 @@ def run_pipeline(
             return
 
         logging.info("Snakemake not available; executing Python fallback pipeline")
-        dataset_ids = [dataset["id"] for dataset in config["datasets"]]
-
-        for dataset_id in dataset_ids:
+        for dataset_id in dataset_ids(config):
             with timer(f"QC ({dataset_id})"):
                 qc.process_dataset_qc(dataset_id, config)
             with timer(f"Doublets ({dataset_id})"):
@@ -87,4 +115,3 @@ def run_pipeline(
 
     finally:
         _remove_handler(file_handler)
-
