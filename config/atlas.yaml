@@ -8,6 +8,9 @@ datasets:
     url: "data/raw/melanoma_census.h5ad"
     platform: "mixed"
     cancer_type: "melanoma"
+    receptor_path: "data/raw/melanoma_census_tcr_contig_annotations.csv"
+    receptor_format: "10x_vdj"
+    receptor_sha256: null
     # Optional SHA256 hash for integrity verification (url_sha256, genes_sha256, etc.)
     # url_sha256: "abc123..."
   - id: "NSCLC_CENSUS"
@@ -87,6 +90,27 @@ outputs:
   cellxgene_dir: "processed/cellxgene_release"
   figures_dir: "processed/figures"
   metrics_dir: "processed/metrics"
+
+tcr:
+  enabled: false
+  allow_missing: true
+  productive_only: true
+  expansion_bins: [1, 5, 20]
+  expansion_labels: ["singleton", "small", "medium", "expanded"]
+  qc_metrics_dir: "processed/metrics/tcr"
+  figures_dir: "processed/figures/tcr"
+  atlas_path: "processed/integrated_annotated.h5ad"
+  chain_types:
+    alpha_beta: ["TRA", "TRB"]
+    gamma_delta: ["TRG", "TRD"]
+  scirpy_settings:
+    default_chain: "alpha_beta"
+  report:
+    include_figures:
+      - clonotype_frequency
+      - umap_clonal_expansion
+      - cdr3_spectratype
+      - vj_usage_heatmap
 
 report:
   embed_figures: true

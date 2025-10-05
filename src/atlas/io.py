@@ -4,7 +4,7 @@ import hashlib
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import anndata as ad
@@ -13,6 +13,7 @@ import requests
 from scipy import io as scipy_io
 
 from .schemas import validate_anndata
+from . import receptors_io
 from .utils import ensure_dir, load_config, setup_logging, timer
 
 
@@ -26,7 +27,7 @@ def _compute_sha256(filepath: Path) -> str:
     return sha256_hash.hexdigest()
 
 
-def download_if_needed(entry: Dict, outdir: Path) -> Dict:
+def download_if_needed(entry: Dict, outdir: Path, *, config: Optional[Dict] = None) -> Dict:
     """
     Download dataset files if they are URLs, otherwise use local paths.
 
@@ -48,7 +49,7 @@ def download_if_needed(entry: Dict, outdir: Path) -> Dict:
     """
     result = entry.copy()
 
-    for key in ["url", "genes", "barcodes", "metadata"]:
+    for key in ["url", "genes", "barcodes", "metadata", "receptor_path"]:
         if key not in entry:
             continue
 
@@ -66,6 +67,8 @@ def download_if_needed(entry: Dict, outdir: Path) -> Dict:
             # Check for optional SHA256 hash for this key
             hash_key = f"{key}_sha256"
             expected_sha256 = entry.get(hash_key)
+            if key == "receptor_path" and not expected_sha256:
+                expected_sha256 = entry.get("receptor_sha256")
 
             if not outpath.exists():
                 logging.info(f"Downloading {path_or_url} to {outpath}")
@@ -115,7 +118,7 @@ def download_if_needed(entry: Dict, outdir: Path) -> Dict:
     return result
 
 
-def load_matrix(entry: Dict) -> ad.AnnData:
+def load_matrix(entry: Dict, *, config: Optional[Dict] = None) -> ad.AnnData:
     """Load count matrix from various formats and ensure proper metadata."""
     dataset_id = entry["id"]
     cancer_type = entry["cancer_type"]
@@ -162,6 +165,11 @@ def load_matrix(entry: Dict) -> ad.AnnData:
     # Validate AnnData against schema
     validate_anndata(adata, dataset_id=dataset_id, raise_on_error=True)
 
+    try:
+        receptors_io.attach_receptor_data(adata, entry, config=config)
+    except Exception as exc:
+        logging.warning("Failed to attach receptor metadata for %s: %s", dataset_id, exc)
+
     return adata
 
 
@@ -177,7 +185,7 @@ def download_datasets(config: Dict) -> List[str]:
         logging.info(f"Processing dataset: {dataset_id}")
         
         # Download files if needed
-        downloaded_info = download_if_needed(dataset_info, raw_dir)
+        downloaded_info = download_if_needed(dataset_info, raw_dir, config=config)
         
         # Create a flag file to indicate download completion
         flag_file = raw_dir / f"{dataset_id}_downloaded.flag"

@@ -236,7 +236,7 @@ def process_dataset_qc(dataset_id: str, config: Dict) -> None:
     
     # Load raw data
     logging.info(f"Loading dataset {dataset_id}")
-    adata = load_matrix(dataset_info)
+    adata = load_matrix(dataset_info, config=config)
     
     # Compute QC metrics
     adata = compute_qc_metrics(adata)

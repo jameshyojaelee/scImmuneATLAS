@@ -9,19 +9,25 @@ from typing import Dict, Iterable, Optional
 
 from ..utils import ensure_dir, load_config, setup_logging
 from . import analytics, ingest, qc, viz, report as report_mod
+from .config import (
+    allow_missing as cfg_allow_missing,
+    dataset_has_receptor,
+    global_receptor_config,
+    is_enabled as cfg_is_enabled,
+)
 
 
 def _receptor_cfg(config: Dict) -> Dict:
-    return config.get("receptor", {})
+    return global_receptor_config(config)
 
 
 def is_enabled(config: Dict) -> bool:
     """Return True when the receptor module is enabled in the config."""
-    return bool(_receptor_cfg(config).get("enabled", False))
+    return cfg_is_enabled(config)
 
 
 def allow_missing(config: Dict) -> bool:
-    return bool(_receptor_cfg(config).get("allow_missing", False))
+    return cfg_allow_missing(config)
 
 
 def datasets_by_id(config: Dict) -> Dict[str, Dict]:
@@ -30,7 +36,7 @@ def datasets_by_id(config: Dict) -> Dict[str, Dict]:
 
 def datasets_with_receptor(config: Dict) -> Iterable[str]:
     for entry in config.get("datasets", []):
-        if entry.get("receptor"):
+        if dataset_has_receptor(entry) or entry.get("receptor"):
             yield entry["id"]
 
 
@@ -39,7 +45,7 @@ def ingest_dataset(dataset_id: str, config: Dict) -> Optional[Path]:
     dataset_cfg = dataset_map.get(dataset_id)
     if not dataset_cfg:
         raise ValueError(f"Dataset '{dataset_id}' not defined in configuration")
-    if not dataset_cfg.get("receptor"):
+    if not (dataset_has_receptor(dataset_cfg) or dataset_cfg.get("receptor")):
         if allow_missing(config):
             logging.info("Skipping receptor ingest for %s (no receptor config)", dataset_id)
             return None
@@ -52,7 +58,7 @@ def ingest_dataset(dataset_id: str, config: Dict) -> Optional[Path]:
 def qc_dataset(dataset_id: str, config: Dict) -> Optional[Path]:
     dataset_map = datasets_by_id(config)
     dataset_cfg = dataset_map.get(dataset_id)
-    if not dataset_cfg or not dataset_cfg.get("receptor"):
+    if not dataset_cfg or not (dataset_has_receptor(dataset_cfg) or dataset_cfg.get("receptor")):
         if allow_missing(config):
             logging.info("Skipping receptor QC for %s (no receptor config)", dataset_id)
             return None
@@ -77,11 +83,15 @@ def run_all(config: Dict) -> None:
             return
         raise ValueError("Receptor module enabled but no datasets provide receptor information")
 
+    dataset_map = datasets_by_id(config)
     for dataset_id in dataset_ids:
-        if ingest.get_output_path(dataset_id).exists() is False:
+        dataset_cfg = dataset_map[dataset_id]
+        ingest_path = ingest.resolved_output_path(dataset_cfg, config)
+        if not ingest_path.exists():
             logging.info("Re-ingesting receptor data for %s", dataset_id)
             ingest_dataset(dataset_id, config)
-        if qc.get_output_path(dataset_id, config).exists() is False:
+        qc_path = qc.get_output_path(dataset_id, config)
+        if not qc_path.exists():
             logging.info("Recomputing receptor QC metrics for %s", dataset_id)
             qc_dataset(dataset_id, config)
 

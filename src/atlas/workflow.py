@@ -8,7 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import annotate, benchmark, doublets, export, integration, qc, viz, utils
+from . import annotate, benchmark, doublets, export, integration, qc, viz, utils, receptor
+from .receptor.config import global_receptor_config
 from .utils import ensure_dir, timer
 
 
@@ -35,6 +36,30 @@ def collect_pipeline_targets(config: Dict) -> List[str]:
         metrics_dir / "integration_metrics.json",
         metrics_dir / "annotation_summary.json",
     ]
+
+    receptor_cfg = global_receptor_config(config)
+    if receptor_cfg.get("enabled"):
+        receptor_metrics_dir = Path(
+            receptor_cfg.get("qc_metrics_dir", receptor_cfg.get("metrics_dir", "processed/metrics/tcr"))
+        )
+        receptor_figures_dir = Path(
+            receptor_cfg.get("figures_dir", "processed/figures/tcr")
+        )
+        targets.extend(
+            [
+                receptor_metrics_dir / "repertoire_summary.json",
+                receptor_metrics_dir / "clonotype_expansion.tsv",
+                receptor_metrics_dir / "diversity_indices.json",
+                receptor_metrics_dir / "vj_usage.tsv",
+                receptor_metrics_dir / "chain_pairing_summary.json",
+                receptor_metrics_dir / "v_usage_summary.json",
+                receptor_metrics_dir / "report_section.md",
+                receptor_figures_dir / "clonotype_frequency.png",
+                receptor_figures_dir / "umap_clonal_expansion.png",
+                receptor_figures_dir / "cdr3_spectratype.png",
+                receptor_figures_dir / "vj_usage_heatmap.png",
+            ]
+        )
 
     if config.get("benchmarking", {}).get("enabled", False):
         targets.append(metrics_dir / "benchmarking.json")
@@ -89,16 +114,26 @@ def run_pipeline(
             return
 
         logging.info("Snakemake not available; executing Python fallback pipeline")
+        receptor_enabled = receptor.is_enabled(config)
+        receptor_datasets = set(receptor.datasets_with_receptor(config)) if receptor_enabled else set()
         for dataset_id in dataset_ids(config):
             with timer(f"QC ({dataset_id})"):
                 qc.process_dataset_qc(dataset_id, config)
             with timer(f"Doublets ({dataset_id})"):
                 doublets.process_dataset_doublets(dataset_id, config)
+            if receptor_enabled and dataset_id in receptor_datasets:
+                with timer(f"Receptor ingest ({dataset_id})"):
+                    receptor.ingest_dataset(dataset_id, config)
+                with timer(f"Receptor QC ({dataset_id})"):
+                    receptor.qc_dataset(dataset_id, config)
 
         with timer("Integration"):
             integration.run_integration(config)
         with timer("Annotation"):
             annotate.run_annotation(config)
+        if receptor_enabled:
+            with timer("Receptor analytics"):
+                receptor.run_all(config)
         with timer("Export"):
             export.run_export(config)
         with timer("Visualization"):

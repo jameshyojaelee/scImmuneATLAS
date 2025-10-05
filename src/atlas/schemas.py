@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import anndata as ad
 import pandera as pa
+import pandas as pd
 
 
 # Define expected obs (cell metadata) schema
@@ -27,6 +28,60 @@ var_schema = pa.DataFrameSchema(
     strict=False,
     coerce=True,
 )
+
+
+receptor_table_schema = pa.DataFrameSchema(
+    {
+        "dataset_id": pa.Column(str, required=True, nullable=False),
+        "cell_id": pa.Column(str, required=True, nullable=False),
+        "chain": pa.Column(str, required=True, nullable=False),
+        "locus": pa.Column(str, required=False, nullable=True),
+        "clonotype_id": pa.Column(str, required=False, nullable=True),
+        "productive": pa.Column(bool, required=False, nullable=True),
+        "cdr3_nt": pa.Column(str, required=False, nullable=True),
+        "cdr3_aa": pa.Column(str, required=False, nullable=True),
+        "v_gene": pa.Column(str, required=False, nullable=True),
+        "d_gene": pa.Column(str, required=False, nullable=True),
+        "j_gene": pa.Column(str, required=False, nullable=True),
+    },
+    strict=False,
+    coerce=True,
+)
+
+
+def validate_receptor_table(
+    df: pd.DataFrame,
+    *,
+    chain_sets: Optional[List[List[str]]] = None,
+    raise_on_error: bool = True,
+) -> tuple[bool, Optional[str]]:
+    """Validate receptor tables and optionally enforce chain pairing completeness."""
+
+    try:
+        receptor_table_schema.validate(df, lazy=True)
+
+        if chain_sets:
+            required_sets = [set(group) for group in chain_sets if group]
+            grouped = df.groupby("cell_id")["chain"].agg(lambda values: set(v for v in values if v))
+            incomplete = [
+                cell_id
+                for cell_id, chains in grouped.items()
+                if required_sets and not any(req.issubset(chains) for req in required_sets)
+            ]
+            if incomplete:
+                raise ValueError(
+                    "Receptor pairing incomplete for cells: "
+                    + ", ".join(incomplete[:10])
+                    + ("..." if len(incomplete) > 10 else "")
+                )
+
+        return True, None
+
+    except (pa.errors.SchemaError, ValueError) as exc:
+        message = f"Receptor table validation failed: {exc}"
+        if raise_on_error:
+            raise
+        return False, message
 
 
 def validate_anndata(

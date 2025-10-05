@@ -10,9 +10,10 @@ from typing import Dict, Iterable, Optional, Tuple
 import pandas as pd
 
 from ..utils import ensure_dir
+from .config import dataset_receptor_config
 
 DEFAULT_PARQUET_DIR = Path("data/interim")
-DEFAULT_METADATA_DIR = Path("processed/metrics/receptor")
+DEFAULT_METADATA_DIR = Path("processed/metrics/tcr")
 
 
 def get_output_path(dataset_id: str, *, directory: Path = DEFAULT_PARQUET_DIR) -> Path:
@@ -21,6 +22,28 @@ def get_output_path(dataset_id: str, *, directory: Path = DEFAULT_PARQUET_DIR) -
 
 def get_metadata_path(dataset_id: str, *, directory: Path = DEFAULT_METADATA_DIR) -> Path:
     return directory / f"{dataset_id}_ingest.json"
+
+
+def _resolved_dirs(dataset_cfg: Dict, config: Dict) -> Tuple[Path, Path]:
+    receptor_cfg = dataset_receptor_config(dataset_cfg, config)
+    outdir = Path(receptor_cfg.get("interim_dir", DEFAULT_PARQUET_DIR))
+    metrics_dir = Path(
+        receptor_cfg.get(
+            "qc_metrics_dir",
+            receptor_cfg.get("metrics_dir", DEFAULT_METADATA_DIR),
+        )
+    )
+    return outdir, metrics_dir
+
+
+def resolved_output_path(dataset_cfg: Dict, config: Dict) -> Path:
+    outdir, _ = _resolved_dirs(dataset_cfg, config)
+    return get_output_path(dataset_cfg["id"], directory=outdir)
+
+
+def resolved_metadata_path(dataset_cfg: Dict, config: Dict) -> Path:
+    _, metrics_dir = _resolved_dirs(dataset_cfg, config)
+    return get_metadata_path(dataset_cfg["id"], directory=metrics_dir)
 
 
 def _normalise_productive(value: object) -> Optional[bool]:
@@ -216,8 +239,8 @@ def normalise_table(
 
 def ingest_dataset(dataset_cfg: Dict, config: Dict) -> Path:
     dataset_id = dataset_cfg["id"]
-    receptor_cfg = {**config.get("receptor", {}), **dataset_cfg.get("receptor", {})}
-    source = receptor_cfg.get("contigs")
+    receptor_cfg = dataset_receptor_config(dataset_cfg, config)
+    source = receptor_cfg.get("contigs") or receptor_cfg.get("path")
     if not source:
         raise ValueError(f"Dataset '{dataset_id}' receptor config missing 'contigs' path")
 
@@ -225,14 +248,13 @@ def ingest_dataset(dataset_cfg: Dict, config: Dict) -> Path:
     df_raw = _read_table(contig_path, receptor_cfg)
     df = normalise_table(dataset_id, df_raw, receptor_cfg)
 
-    outdir = Path(receptor_cfg.get("interim_dir", DEFAULT_PARQUET_DIR))
+    outdir, metrics_dir = _resolved_dirs(dataset_cfg, config)
     ensure_dir(outdir)
     out_path = get_output_path(dataset_id, directory=outdir)
     df.to_parquet(out_path, index=False)
 
-    metadata_dir = Path(receptor_cfg.get("qc_metrics_dir", DEFAULT_METADATA_DIR))
-    ensure_dir(metadata_dir)
-    metadata_path = get_metadata_path(dataset_id, directory=metadata_dir)
+    ensure_dir(metrics_dir)
+    metadata_path = get_metadata_path(dataset_id, directory=metrics_dir)
     summary = {
         "dataset_id": dataset_id,
         "source": str(contig_path),

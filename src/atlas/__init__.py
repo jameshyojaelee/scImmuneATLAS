@@ -32,4 +32,5 @@ __all__ = [
     "export",
     "utils",
     "workflow",
+    "receptor",
 ]

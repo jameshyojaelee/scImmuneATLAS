@@ -364,6 +364,20 @@ def generate_report(config_path: str) -> None:
         lines.append("- Benchmarking not run.")
     lines.append("")
 
+    receptor_cfg = config.get("tcr") or config.get("receptor", {}) or {}
+    fragment_dir = Path(
+        receptor_cfg.get(
+            "qc_metrics_dir",
+            receptor_cfg.get("metrics_dir", "processed/metrics/tcr"),
+        )
+    )
+    fragment_path = fragment_dir / "report_section.md"
+    if fragment_path.exists():
+        fragment_text = fragment_path.read_text().strip()
+        if fragment_text:
+            lines.append(fragment_text)
+            lines.append("")
+
     if embed_figures:
         lines.append("## Key Figures")
         figure_names = [

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import annotate, benchmark, doublets, export, integration, qc, viz, workflow
+from . import annotate, benchmark, doublets, export, integration, qc, receptor, viz, workflow
 from .io import download_if_needed, load_matrix
 from .schemas import validate_anndata
 from .utils import generate_report, load_config, setup_logging, ensure_dir
@@ -84,7 +84,7 @@ def _run_validate_data(config: dict) -> None:
             logging.info(f"Validating dataset: {dataset_id}")
 
             # Ensure remote assets are materialized locally if needed
-            resolved_entry = download_if_needed(dataset_info, raw_dir)
+            resolved_entry = download_if_needed(dataset_info, raw_dir, config=config)
 
             # Check if file exists
             url_path = Path(resolved_entry["url"])
@@ -95,7 +95,7 @@ def _run_validate_data(config: dict) -> None:
                 continue
 
             # Load and validate the dataset
-            adata = load_matrix(resolved_entry)
+            adata = load_matrix(resolved_entry, config=config)
 
             # Validation already happens in load_matrix, but we can do additional checks
             is_valid, error = validate_anndata(
@@ -150,6 +150,7 @@ def main() -> None:
         "report",
         "pipeline",
         "validate-data",
+        "receptor",
     ])
     parser.add_argument("--config", default="config/atlas.yaml", help="Config file path")
     parser.add_argument("--dataset", help="Dataset ID (for qc/doublets)")
@@ -163,6 +164,16 @@ def main() -> None:
         "--force-python",
         action="store_true",
         help="Skip Snakemake and run the Python fallback pipeline",
+    )
+    parser.add_argument(
+        "--stage",
+        choices=["ingest", "qc", "analytics", "viz", "all"],
+        help="Receptor module stage (receptor command only)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force receptor run even if disabled in config",
     )
 
     args = parser.parse_args()
@@ -190,6 +201,15 @@ def main() -> None:
         _run_pipeline_cli(config, args.config, args.jobs, args.force_python)
     elif args.command == "validate-data":
         _run_validate_data(config)
+    elif args.command == "receptor":
+        receptor_args = argparse.Namespace(
+            config=args.config,
+            dataset=args.dataset,
+            stage=args.stage or "all",
+            log_level=args.log_level,
+            force=args.force,
+        )
+        receptor._cli_entry(receptor_args)
     else:  # pragma: no cover - safeguard
         raise ValueError(f"Unknown command: {args.command}")
 
