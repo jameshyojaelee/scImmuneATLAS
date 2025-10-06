@@ -167,6 +167,27 @@ if RECEPTOR_ENABLED and RECEPTOR_DATASETS:
         shell:
             "python -m src.atlas.receptor --stage analytics --config {params.config_file}"
 
+    rule tcr:
+        input:
+            atlas="processed/integrated_annotated.h5ad",
+            doublet_filtered=expand("data/interim/{dataset}.doublet_filtered.h5ad", dataset=RECEPTOR_DATASETS),
+            tables=[RECEPTOR_PARQUET_MAP[d] for d in RECEPTOR_DATASETS]
+        output:
+            summary=str(RECEPTOR_METRICS_DIR / "tcr_summary.json"),
+            overlap=str(RECEPTOR_METRICS_DIR / "repertoire_overlap.json"),
+            public=str(RECEPTOR_METRICS_DIR / "public_clonotypes.json"),
+            # Main visualization outputs
+            freq_top20=str(RECEPTOR_FIGURES_DIR / "clonotype_frequency_top20.png"),
+            diversity_fig=str(RECEPTOR_FIGURES_DIR / "repertoire_diversity_by_cancer_type.png"),
+            umap_expansion=str(RECEPTOR_FIGURES_DIR / "umap_clonotype_expansion.png"),
+            spectratype_chain=str(RECEPTOR_FIGURES_DIR / "cdr3_spectratype_by_chain.png"),
+            overlap_jaccard=str(RECEPTOR_FIGURES_DIR / "repertoire_overlap_jaccard.png"),
+            vj_heatmap=str(RECEPTOR_FIGURES_DIR / "vj_pairing_heatmap.png"),
+        params:
+            config_file="config/atlas.yaml"
+        shell:
+            "python -m src.atlas.tcr --config {params.config_file}"
+
 rule export_cellxgene:
     input:
         "processed/integrated_annotated.h5ad"
@@ -211,6 +232,7 @@ REPORT_INPUTS = [
 if RECEPTOR_ENABLED and RECEPTOR_DATASETS:
     REPORT_INPUTS.append(str(RECEPTOR_METRICS_DIR / "repertoire_summary.json"))
     REPORT_INPUTS.append(str(RECEPTOR_METRICS_DIR / "report_section.md"))
+    REPORT_INPUTS.append(str(RECEPTOR_METRICS_DIR / "tcr_summary.json"))
 
 
 rule report:

@@ -61,9 +61,23 @@ def collect_pipeline_targets(config: Dict) -> List[str]:
             ]
         )
 
+    # TCR analysis outputs (scirpy-based)
     if receptor_cfg.get("enabled"):
         tcr_metrics_dir = Path(receptor_cfg.get("qc_metrics_dir", "processed/metrics/tcr"))
-        targets.append(tcr_metrics_dir / "tcr_summary.json")
+        tcr_figures_dir = Path(receptor_cfg.get("figures_dir", "processed/figures/tcr"))
+        targets.extend([
+            # TCR metrics
+            tcr_metrics_dir / "tcr_summary.json",
+            tcr_metrics_dir / "repertoire_overlap.json",
+            tcr_metrics_dir / "public_clonotypes.json",
+            # TCR visualizations
+            tcr_figures_dir / "clonotype_frequency_top20.png",
+            tcr_figures_dir / "repertoire_diversity_by_cancer_type.png",
+            tcr_figures_dir / "umap_clonotype_expansion.png",
+            tcr_figures_dir / "cdr3_spectratype_by_chain.png",
+            tcr_figures_dir / "repertoire_overlap_jaccard.png",
+            tcr_figures_dir / "vj_pairing_heatmap.png",
+        ])
 
     if config.get("benchmarking", {}).get("enabled", False):
         targets.append(metrics_dir / "benchmarking.json")

@@ -249,6 +249,227 @@ def create_minimal_demo(config_path: str) -> None:
     logging.info("Minimal demo completed successfully!")
 
 
+def _generate_tcr_section(config: Dict, metrics_dir: Path, figures_dir: Path, embed_figures: bool) -> List[str]:
+    """Generate TCR/BCR repertoire section for report.
+
+    Returns a list of markdown lines. Returns empty list if TCR is disabled or no data available.
+    """
+    import json
+    import os
+
+    lines: List[str] = []
+
+    # Check if TCR is enabled
+    receptor_cfg = config.get("tcr") or config.get("receptor", {}) or {}
+    if not receptor_cfg.get("enabled", False):
+        return lines
+
+    # Determine TCR metrics directory
+    tcr_metrics_dir = Path(
+        receptor_cfg.get(
+            "qc_metrics_dir",
+            receptor_cfg.get("metrics_dir", "processed/metrics/tcr"),
+        )
+    )
+
+    tcr_figures_dir = Path(
+        receptor_cfg.get("figures_dir", "processed/figures/tcr")
+    )
+
+    # Check if any TCR data exists
+    tcr_summary_path = tcr_metrics_dir / "tcr_summary.json"
+    if not tcr_summary_path.exists():
+        # TCR analysis hasn't run yet
+        return lines
+
+    # Start TCR section
+    lines.append("## TCR/BCR Repertoire Analysis")
+    lines.append("")
+
+    try:
+        tcr_summary = json.loads(tcr_summary_path.read_text())
+
+        # Global summary metrics
+        lines.append("### Global Repertoire Statistics")
+        lines.append("")
+
+        global_metrics = tcr_summary.get("global", {})
+        if global_metrics:
+            lines.append("| Metric | Value |")
+            lines.append("|---|---|")
+
+            if "total_cells" in global_metrics:
+                lines.append(f"| Total cells with receptor data | {global_metrics['total_cells']:,} |")
+            if "total_clonotypes" in global_metrics:
+                lines.append(f"| Unique clonotypes | {global_metrics['total_clonotypes']:,} |")
+            if "n_public_clonotypes" in global_metrics:
+                lines.append(f"| Public clonotypes (shared across datasets) | {global_metrics['n_public_clonotypes']:,} |")
+
+            # Repertoire overlap
+            overlap_summary = global_metrics.get("repertoire_overlap_summary", {})
+            if overlap_summary:
+                if "mean_jaccard" in overlap_summary:
+                    lines.append(f"| Mean repertoire overlap (Jaccard) | {overlap_summary['mean_jaccard']:.3f} |")
+                if "mean_morisita_horn" in overlap_summary:
+                    lines.append(f"| Mean repertoire similarity (Morisita-Horn) | {overlap_summary['mean_morisita_horn']:.3f} |")
+
+            # CDR3 properties
+            cdr3_props = global_metrics.get("cdr3_properties", {})
+            if cdr3_props:
+                if "mean_length" in cdr3_props:
+                    lines.append(f"| Mean CDR3 length (AA) | {cdr3_props['mean_length']:.1f} |")
+                if "mean_charge" in cdr3_props:
+                    lines.append(f"| Mean CDR3 charge | {cdr3_props['mean_charge']:.2f} |")
+                if "mean_hydrophobicity" in cdr3_props:
+                    lines.append(f"| Mean CDR3 hydrophobicity | {cdr3_props['mean_hydrophobicity']:.2f} |")
+
+            lines.append("")
+
+        # Per-dataset metrics
+        lines.append("### Per-Dataset Repertoire Metrics")
+        lines.append("")
+
+        dataset_metrics = tcr_summary.get("datasets", {})
+        if dataset_metrics:
+            lines.append("| Dataset | Cells | Clonotypes | Shannon Entropy | D50 | Top Clonotype Size |")
+            lines.append("|---|---|---|---|---|---|")
+
+            for dataset_id, metrics in sorted(dataset_metrics.items()):
+                n_cells = metrics.get("n_cells", 0)
+                n_clonotypes = metrics.get("n_clonotypes", 0)
+
+                diversity = metrics.get("diversity", {})
+                shannon = diversity.get("shannon_entropy", "N/A")
+                shannon_str = f"{shannon:.2f}" if isinstance(shannon, (int, float)) else shannon
+
+                d50 = diversity.get("D50", "N/A")
+                d50_str = f"{int(d50)}" if isinstance(d50, (int, float)) else d50
+
+                top_clonotypes = metrics.get("top_clonotypes", [])
+                top_size = top_clonotypes[0]["cells"] if top_clonotypes else 0
+
+                lines.append(
+                    f"| {dataset_id} | {n_cells:,} | {n_clonotypes:,} | "
+                    f"{shannon_str} | {d50_str} | {top_size:,} |"
+                )
+
+            lines.append("")
+
+        # V/J gene usage summary
+        lines.append("### V/J Gene Usage")
+        lines.append("")
+        lines.append("Top 10 most frequent V genes:")
+        lines.append("")
+
+        v_usage = global_metrics.get("v_gene_usage", {})
+        if v_usage:
+            lines.append("| V Gene | Cells |")
+            lines.append("|---|---|")
+            for gene, count in sorted(v_usage.items(), key=lambda x: x[1], reverse=True)[:10]:
+                lines.append(f"| {gene} | {count:,} |")
+            lines.append("")
+        else:
+            lines.append("_No V gene usage data available._")
+            lines.append("")
+
+        lines.append("Top 10 most frequent J genes:")
+        lines.append("")
+
+        j_usage = global_metrics.get("j_gene_usage", {})
+        if j_usage:
+            lines.append("| J Gene | Cells |")
+            lines.append("|---|---|")
+            for gene, count in sorted(j_usage.items(), key=lambda x: x[1], reverse=True)[:10]:
+                lines.append(f"| {gene} | {count:,} |")
+            lines.append("")
+        else:
+            lines.append("_No J gene usage data available._")
+            lines.append("")
+
+        # Public clonotypes
+        public_clonotypes_path = tcr_metrics_dir / "public_clonotypes.json"
+        if public_clonotypes_path.exists():
+            public_data = json.loads(public_clonotypes_path.read_text())
+
+            n_public = public_data.get("n_public_clonotypes", 0)
+            if n_public > 0:
+                lines.append("### Public Clonotypes")
+                lines.append("")
+                lines.append(f"Identified **{n_public:,}** clonotypes shared across multiple datasets.")
+                lines.append("")
+
+                top_public = public_data.get("top_public_clonotypes", [])[:5]
+                if top_public:
+                    lines.append("Top 5 most prevalent public clonotypes:")
+                    lines.append("")
+                    lines.append("| Clonotype ID | Datasets | Total Cells |")
+                    lines.append("|---|---|---|")
+
+                    for clono_info in top_public:
+                        clono_id = clono_info["clonotype_id"]
+                        n_datasets = clono_info["n_datasets"]
+                        total_cells = clono_info["total_cells"]
+                        datasets_str = ", ".join(clono_info["datasets"][:3])
+                        if n_datasets > 3:
+                            datasets_str += f" (+{n_datasets - 3} more)"
+
+                        lines.append(f"| `{clono_id}` | {datasets_str} | {total_cells:,} |")
+
+                    lines.append("")
+
+        # Embed TCR figures
+        if embed_figures:
+            lines.append("### Repertoire Visualizations")
+            lines.append("")
+
+            tcr_figure_names = [
+                ("clonotype_frequency_top20.png", "Top 20 Expanded Clonotypes"),
+                ("repertoire_diversity_by_cancer_type.png", "Repertoire Diversity by Cancer Type"),
+                ("umap_clonotype_expansion.png", "UMAP Colored by Clonotype Size"),
+                ("cdr3_spectratype_by_chain.png", "CDR3 Length Distribution (Spectratype)"),
+                ("repertoire_overlap_jaccard.png", "Repertoire Overlap (Jaccard Index)"),
+                ("vj_pairing_heatmap.png", "V-J Gene Pairing Frequencies"),
+            ]
+
+            report_dir = Path("processed")
+            figures_found = False
+
+            for fig_name, title in tcr_figure_names:
+                fig_path = tcr_figures_dir / fig_name
+                if fig_path.exists():
+                    rel_path = os.path.relpath(fig_path, report_dir)
+                    lines.append(f"#### {title}")
+                    lines.append(f"![{title}]({rel_path})")
+                    lines.append("")
+                    figures_found = True
+
+            if not figures_found:
+                lines.append("_TCR/BCR figures not yet generated._")
+                lines.append("")
+
+        # Additional metrics files
+        lines.append("### Additional TCR/BCR Metrics")
+        lines.append("")
+        lines.append(f"- **Summary metrics**: `{tcr_metrics_dir}/tcr_summary.json`")
+        lines.append(f"- **Repertoire overlap**: `{tcr_metrics_dir}/repertoire_overlap.json`")
+        lines.append(f"- **Public clonotypes**: `{tcr_metrics_dir}/public_clonotypes.json`")
+
+        # List per-dataset metrics
+        dataset_metric_files = sorted(tcr_metrics_dir.glob("*_tcr_metrics.json"))
+        if dataset_metric_files:
+            lines.append(f"- **Per-dataset metrics**: {len(dataset_metric_files)} files in `{tcr_metrics_dir}/`")
+
+        lines.append("")
+
+    except Exception as e:
+        # Gracefully degrade on error
+        lines.append("_TCR/BCR analysis metrics could not be loaded._")
+        lines.append(f"_Error: {str(e)}_")
+        lines.append("")
+
+    return lines
+
+
 def generate_report(config_path: str) -> None:
     """Generate a markdown report summarizing metrics and outputs."""
     import json
@@ -364,19 +585,10 @@ def generate_report(config_path: str) -> None:
         lines.append("- Benchmarking not run.")
     lines.append("")
 
-    receptor_cfg = config.get("tcr") or config.get("receptor", {}) or {}
-    fragment_dir = Path(
-        receptor_cfg.get(
-            "qc_metrics_dir",
-            receptor_cfg.get("metrics_dir", "processed/metrics/tcr"),
-        )
-    )
-    fragment_path = fragment_dir / "report_section.md"
-    if fragment_path.exists():
-        fragment_text = fragment_path.read_text().strip()
-        if fragment_text:
-            lines.append(fragment_text)
-            lines.append("")
+    # Generate TCR/BCR section (replaces old fragment-based approach)
+    tcr_section = _generate_tcr_section(config, metrics_dir, figures_dir, embed_figures)
+    if tcr_section:
+        lines.extend(tcr_section)
 
     if embed_figures:
         lines.append("## Key Figures")

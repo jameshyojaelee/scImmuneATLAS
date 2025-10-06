@@ -1,4 +1,4 @@
-.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch validate-data pipeline receptor
+.PHONY: setup lint test demo all app env-bootstrap fetch-no-cap run-after-fetch validate-data pipeline receptor tcr report
 
 ENV_NAME=immune-atlas
 
@@ -28,8 +28,11 @@ pipeline:
 receptor:
 	scimmuneatlas receptor --config config/atlas.yaml --stage all
 
+tcr:
+	scimmuneatlas tcr --config config/atlas.yaml
+
 report:
-	python -m atlas.cli report
+	scimmuneatlas report --config config/atlas.yaml
 
 validate-data:
 	scimmuneatlas validate-data --config config/atlas.yaml
