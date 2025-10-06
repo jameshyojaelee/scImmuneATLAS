@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import annotate, benchmark, doublets, export, integration, qc, viz, utils, receptor
+from . import annotate, benchmark, doublets, export, integration, qc, viz, utils, receptor, tcr
 from .receptor.config import global_receptor_config
 from .utils import ensure_dir, timer
 
@@ -60,6 +60,10 @@ def collect_pipeline_targets(config: Dict) -> List[str]:
                 receptor_figures_dir / "vj_usage_heatmap.png",
             ]
         )
+
+    if receptor_cfg.get("enabled"):
+        tcr_metrics_dir = Path(receptor_cfg.get("qc_metrics_dir", "processed/metrics/tcr"))
+        targets.append(tcr_metrics_dir / "tcr_summary.json")
 
     if config.get("benchmarking", {}).get("enabled", False):
         targets.append(metrics_dir / "benchmarking.json")
@@ -134,6 +138,8 @@ def run_pipeline(
         if receptor_enabled:
             with timer("Receptor analytics"):
                 receptor.run_all(config)
+            with timer("TCR analysis"):
+                tcr.run_tcr_analysis(config)
         with timer("Export"):
             export.run_export(config)
         with timer("Visualization"):

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import annotate, benchmark, doublets, export, integration, qc, receptor, viz, workflow
+from . import annotate, benchmark, doublets, export, integration, qc, receptor, tcr, viz, workflow
 from .io import download_if_needed, load_matrix
 from .schemas import validate_anndata
 from .utils import generate_report, load_config, setup_logging, ensure_dir
@@ -151,6 +151,7 @@ def main() -> None:
         "pipeline",
         "validate-data",
         "receptor",
+        "tcr",
     ])
     parser.add_argument("--config", default="config/atlas.yaml", help="Config file path")
     parser.add_argument("--dataset", help="Dataset ID (for qc/doublets)")
@@ -210,6 +211,8 @@ def main() -> None:
             force=args.force,
         )
         receptor._cli_entry(receptor_args)
+    elif args.command == "tcr":
+        tcr.run_tcr_analysis(config)
     else:  # pragma: no cover - safeguard
         raise ValueError(f"Unknown command: {args.command}")
 
