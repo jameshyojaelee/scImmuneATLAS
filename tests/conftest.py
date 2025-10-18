@@ -19,3 +19,14 @@ else:
 for path in user_sites:
     if path not in sys.path:
         sys.path.append(path)
+
+import pytest
+
+try:
+    import ssl  # noqa: F401
+except ImportError as exc:  # pragma: no cover - environment dependent
+    pytest.skip(
+        "OpenSSL support is unavailable (ssl import failed: {}). "
+        "Activate the 'immune-atlas' Conda environment or install openssl/cryptography before running tests.".format(exc),
+        allow_module_level=True,
+    )

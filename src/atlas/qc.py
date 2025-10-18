@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata as ad
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ def compute_qc_metrics(adata: ad.AnnData) -> ad.AnnData:
     # Make a copy to avoid modifying original
     adata = adata.copy()
     
-    # Identify mitochondrial genes (human MT- genes)
+    # Identify mitochondrial genes (Scanpy convention: genes prefixed with MT-)
     adata.var["mt"] = adata.var_names.str.startswith("MT-")
     
     # Calculate QC metrics, including mitochondrial stats
@@ -200,25 +200,49 @@ def _write_qc_plots(adata: ad.AnnData, dataset_id: str, qc_config: Dict) -> None
 
 
 def qc_summary_table(adata_list: List[ad.AnnData]) -> pd.DataFrame:
-    """Generate a summary table of QC metrics across datasets."""
-    rows = []
-    
+    """Generate a summary table of QC metrics across datasets.
+
+    Falls back to NaN when optional QC columns are unavailable and returns an empty
+    DataFrame when no inputs are provided.
+    """
+
+    def _dataset_label(adata: ad.AnnData) -> str:
+        obs = adata.obs
+        if "dataset_id" in obs.columns and not obs["dataset_id"].empty:
+            return str(obs["dataset_id"].iloc[0])
+        return str(adata.uns.get("dataset_id", "unknown"))
+
+    def _obs_stat(adata: ad.AnnData, column: str, reducer: str) -> float:
+        obs = adata.obs
+        if column not in obs.columns or obs.empty:
+            return float("nan")
+        series = obs[column]
+        if series.empty:
+            return float("nan")
+        func = getattr(series, reducer)
+        try:
+            return float(func())
+        except Exception:  # pragma: no cover - defensive
+            return float("nan")
+
+    rows: List[Dict[str, Any]] = []
     for adata in adata_list:
-        dataset_id = adata.obs["dataset_id"].iloc[0]
-        
+        if not isinstance(adata, ad.AnnData):
+            continue
+
         row = {
-            "dataset_id": dataset_id,
-            "n_cells": adata.n_obs,
-            "n_genes": adata.n_vars,
-            "mean_genes_per_cell": adata.obs["n_genes"].mean(),
-            "mean_counts_per_cell": adata.obs["total_counts"].mean(),
-            "mean_mt_pct": adata.obs["pct_counts_mt"].mean(),
-            "median_genes_per_cell": adata.obs["n_genes"].median(),
-            "median_counts_per_cell": adata.obs["total_counts"].median(),
-            "median_mt_pct": adata.obs["pct_counts_mt"].median(),
+            "dataset_id": _dataset_label(adata),
+            "n_cells": int(adata.n_obs),
+            "n_genes": int(adata.n_vars),
+            "mean_genes_per_cell": _obs_stat(adata, "n_genes_by_counts", "mean"),
+            "median_genes_per_cell": _obs_stat(adata, "n_genes_by_counts", "median"),
+            "mean_counts_per_cell": _obs_stat(adata, "total_counts", "mean"),
+            "median_counts_per_cell": _obs_stat(adata, "total_counts", "median"),
+            "mean_mt_pct": _obs_stat(adata, "pct_counts_mt", "mean"),
+            "median_mt_pct": _obs_stat(adata, "pct_counts_mt", "median"),
         }
         rows.append(row)
-    
+
     return pd.DataFrame(rows)
 
 

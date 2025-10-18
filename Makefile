@@ -14,7 +14,15 @@ lint:
 	flake8 src tests app
 
 test:
-	pytest -q
+	@echo "Running pytest (prefer Conda/Mamba env '$(ENV_NAME)')"
+	@if command -v mamba >/dev/null 2>&1; then \
+		mamba run -n $(ENV_NAME) pytest -q || { echo "mamba env '$(ENV_NAME)' not available; falling back to system Python." >&2; pytest -q; }; \
+	elif command -v conda >/dev/null 2>&1; then \
+		conda run -n $(ENV_NAME) pytest -q || { echo "conda env '$(ENV_NAME)' not available; falling back to system Python." >&2; pytest -q; }; \
+	else \
+		echo "No conda/mamba detected; running pytest directly (ensure OpenSSL libraries are available)." >&2; \
+		pytest -q; \
+	fi
 
 demo:
 	python -c "from src.atlas.utils import run_demo; run_demo('config/atlas.yaml')"

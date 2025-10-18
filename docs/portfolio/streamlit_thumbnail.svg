@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">
+  <rect width="320" height="180" rx="12" fill="#111827"/>
+  <rect x="24" y="28" width="272" height="124" rx="10" fill="#1f2937" stroke="#334155" stroke-width="2"/>
+  <rect x="40" y="44" width="80" height="96" rx="8" fill="#0ea5e9" opacity="0.85"/>
+  <rect x="132" y="44" width="60" height="20" rx="6" fill="#22c55e" opacity="0.8"/>
+  <rect x="132" y="74" width="132" height="12" rx="6" fill="#475569"/>
+  <rect x="132" y="94" width="132" height="12" rx="6" fill="#475569"/>
+  <rect x="132" y="114" width="96" height="12" rx="6" fill="#475569"/>
+  <circle cx="60" cy="66" r="12" fill="#38bdf8"/>
+  <circle cx="86" cy="92" r="10" fill="#f97316"/>
+  <circle cx="62" cy="118" r="9" fill="#a855f7"/>
+  <text x="40" y="22" fill="#f1f5f9" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="600">
+    Streamlit Atlas Preview
+  </text>
+  <text x="132" y="68" fill="#0f172a" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="600">
+    Launch via make app
+  </text>
+  <text x="132" y="140" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="10">
+    Live UMAP, gene overlays, dataset filters
+  </text>
+</svg>

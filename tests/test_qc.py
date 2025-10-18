@@ -4,7 +4,7 @@ import numpy as np
 import anndata as ad
 import pytest
 
-from src.atlas.qc import compute_qc_metrics, apply_filters
+from src.atlas.qc import compute_qc_metrics, apply_filters, qc_summary_table
 
 
 def test_compute_qc_metrics():
@@ -113,3 +113,63 @@ def test_filter_edge_cases():
     
     adata_filtered, *_ = apply_filters(adata, impossible_config)
     # This might filter all cells, which is okay for impossible criteria
+
+
+def _synthetic_qc_adata(dataset_id: str, seed: int = 0) -> ad.AnnData:
+    rng = np.random.default_rng(seed)
+    X = rng.negative_binomial(5, 0.3, size=(30, 15))
+    adata = ad.AnnData(X.astype(np.float32))
+    adata.var_names = [f"GENE_{i}" for i in range(15)]
+    adata.obs_names = [f"{dataset_id}_cell_{i}" for i in range(30)]
+    adata.obs["dataset_id"] = dataset_id
+    return compute_qc_metrics(adata)
+
+
+def test_qc_summary_table_happy_path():
+    """qc_summary_table reports aggregates using columns computed by compute_qc_metrics."""
+    adata_a = _synthetic_qc_adata("A", seed=1)
+    adata_b = _synthetic_qc_adata("B", seed=2)
+
+    summary = qc_summary_table([adata_a, adata_b])
+    assert list(summary["dataset_id"]) == ["A", "B"]
+
+    for adata, row in zip([adata_a, adata_b], summary.itertuples()):
+        assert row.n_cells == adata.n_obs
+        assert row.n_genes == adata.n_vars
+        np.testing.assert_allclose(
+            row.mean_genes_per_cell,
+            adata.obs["n_genes_by_counts"].mean(),
+        )
+        np.testing.assert_allclose(
+            row.median_counts_per_cell,
+            adata.obs["total_counts"].median(),
+        )
+
+
+def test_qc_summary_table_missing_optional_columns():
+    """Missing QC columns should yield NaN rather than raising."""
+    X = np.ones((5, 4), dtype=np.float32)
+    adata = ad.AnnData(X)
+    adata.var_names = [f"G{i}" for i in range(4)]
+    adata.obs_names = [f"cell{i}" for i in range(5)]
+    adata.obs["dataset_id"] = "MISSING"
+    summary = qc_summary_table([adata])
+
+    assert summary.loc[0, "dataset_id"] == "MISSING"
+    assert np.isnan(summary.loc[0, "mean_counts_per_cell"])
+    assert np.isnan(summary.loc[0, "mean_mt_pct"])
+
+
+def test_qc_summary_table_handles_empty_datasets():
+    """Zero-cell AnnData objects should be summarised without errors."""
+    adata_empty = ad.AnnData(np.empty((0, 3)))
+    adata_empty.var_names = [f"G{i}" for i in range(3)]
+    adata_empty.obs_names = []
+    adata_empty.uns["dataset_id"] = "EMPTY"
+
+    summary = qc_summary_table([adata_empty])
+    assert summary.loc[0, "dataset_id"] == "EMPTY"
+    assert summary.loc[0, "n_cells"] == 0
+    assert np.isnan(summary.loc[0, "mean_genes_per_cell"])
+
+    assert qc_summary_table([]).empty

@@ -1,17 +1,12 @@
 # scImmuneATLAS
 
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
-A comprehensive, production-ready single-cell immune atlas for tumor-infiltrating lymphocytes (TILs).
+A comprehensive single-cell immune atlas for tumor-infiltrating lymphocytes (TILs).
 
 scImmuneATLAS integrates multiple public scRNA-seq datasets, providing a standardized, reproducible pipeline for immune cell analysis in cancer contexts.
 
 ## Key Features
 
 - Dataset ingest + fetch: local H5AD support and optional CELLxGENE Census downloader
-- **Data integrity guarantees**: Pandera schema validation for AnnData objects and optional SHA256 checksum verification for downloads
 - QC dashboards: canonical gene/count thresholds, per-dataset summaries, violin plots saved to `processed/figures/qc/`
 - Doublet diagnostics: single-pass Scrublet with histograms + JSON summaries in `processed/metrics/doublets/`
 - Batch correction: shared-HVG integration with Harmony or scVI (GPU auto-detect) and mixing metrics (`processed/metrics/integration_metrics.json`)
@@ -74,11 +69,16 @@ pre-commit install
 
 ### Run Demo
 
-End-to-end synthetic demo:
+End-to-end synthetic demo (generates synthetic `.h5ad` inputs, runs QC → doublets → integration → annotation, and emits a demo config at `processed/demo_config.yaml`):
 ```
 make demo
 ```
-Outputs go to `processed/figures/` and `processed/cellxgene_release/`.
+Outputs land in `processed/` and `processed/cellxgene_release/`. The helper automatically falls back to a lightweight PCA/UMAP integration when Harmony/scVI are unavailable so it remains runnable in lean environments.
+
+To validate the demo helpers in isolation:
+```
+pytest -q tests/test_demo_utils.py
+```
 
 ## Data Acquisition
 
@@ -232,9 +232,18 @@ Features: UMAP exploration, filtering, gene expression overlays, proportions, da
 
 - Lint: `make lint`
 - Tests: `make test`
+- Workflow regression (python fallback + CLI): `pytest -q tests/test_cli_pipeline.py`
 - Validate data: `make validate-data`
 - Pre-commit hooks: `pre-commit install`
 - Local test run with venv: `source .venv/bin/activate && PYTHONPATH=$PWD/src pytest -q`
+
+### Testing
+
+- Create the recommended environment once: `mamba env create -f env.yml && mamba activate immune-atlas`.
+- Install extra test tooling (if not already present): `pip install -r tests/requirements.txt`.
+- Run the suite via `make test` (auto-detects mamba/conda and falls back to system Python with a warning).
+- To run a specific module: `mamba run -n immune-atlas pytest -q tests/test_qc.py`.
+- CI reference: `.github/workflows/ci.yml` runs the same steps on GitHub Actions using micromamba.
 
 ### Data Validation & Integrity
 
@@ -275,16 +284,33 @@ datasets:
   mamba install pytorch-cuda -c pytorch -c nvidia
   ```
 - Env isolation: user site-packages are disabled to avoid mixing with `~/.local`; prefer running within the provided Conda/mamba environment.
+- `ImportError: libssl.so.1.1`: indicates the interpreter lacks OpenSSL 1.1+. Activate the `immune-atlas` environment (`mamba activate immune-atlas`), or install OpenSSL via `mamba install openssl` (cryptography ≥41 bundled in `tests/requirements.txt` also brings OpenSSL 3).
 - Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better. Both stages share HVGs so diagnostics in `processed/metrics/integration_metrics.json` are comparable.
 - Missing metrics? Run stages through Snakemake or the CLI so QC/doublet/integration/annotation summaries populate `processed/metrics/`.
 
 ## Portfolio Assets
 
-- `notebooks/atlas_interpretation.ipynb`: Guided notebook for showcasing biological insights
-- `notebooks/metadata_integration_example.ipynb`: Template for merging clinical/TCR metadata
-- `docs/video_walkthrough_script.md`: Script outline for a short project walkthrough
-- `docs/blog_post_outline.md`: Blog post scaffold detailing design decisions
-- `docs/portfolio_one_pager.md`: Printable summary for interviews and lab meetings
+![UMAP thumbnail](docs/portfolio/umap_thumbnail.svg)
+![Streamlit thumbnail](docs/portfolio/streamlit_thumbnail.svg)
+
+- **Reproduce figures (5–7 min)**  
+  1. `make demo` (synthesises datasets, runs QC → doublets → integration → annotation)  
+  2. Review outputs under `processed/figures/` (UMAPs, QC violins, doublet histograms) and `processed/metrics/`.  
+  3. Capture favourite panels for slides or export `processed/report.md` for a narrative summary.  
+- **Streamlit walkthrough (2–3 min)**  
+  1. Install package in editable mode (`pip install -e .[dev]`).  
+  2. Launch `make app` → opens the atlas explorer with dataset filters, gene overlays, and proportions.  
+  3. Highlight the Harmony/scVI toggle and receptor summaries when demoing the UX.  
+- **Interview talking points**  
+  - Harmony ↔ scVI integration switch with shared-HVG selection and regression metrics.  
+  - Automated QC/doublet diagnostics and receptor/TCR analytics feeding into the final report.  
+  - Typed CLI (`scimmuneatlas <stage>`) + Snakemake pipeline ensure reproducibility and CI-friendly exits.  
+- **Ready-to-share collateral**  
+  - `notebooks/atlas_interpretation.ipynb`: Guided story for biological insights.  
+  - `notebooks/metadata_integration_example.ipynb`: Clinical/TCR merge template.  
+  - `docs/portfolio_one_pager.md`: Updated one-pager for interviews.  
+  - `docs/video_walkthrough_script.md`, `docs/blog_post_outline.md`: Narrative scaffolds.  
+  - `docs/resume_blurbs.md`: Copy-paste accomplishment bullets for resumes/LinkedIn.  
 
 ## Citation
 

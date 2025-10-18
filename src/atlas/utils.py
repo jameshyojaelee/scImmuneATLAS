@@ -1,5 +1,7 @@
 """Utilities for the Single-cell Immune Atlas."""
 
+import copy
+import json
 import logging
 import random
 import time
@@ -53,200 +55,306 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def run_demo(config_path: str) -> None:
-    """Run a small end-to-end demo using synthetic data."""
+def _ensure_demo_outputs(config: Dict[str, Any]) -> None:
+    ensure_dir(Path("data/raw"))
+    ensure_dir(Path("data/interim"))
+    ensure_dir(Path("processed"))
+
+    outputs = config.get("outputs", {})
+    ensure_dir(Path(outputs.get("metrics_dir", "processed/metrics")))
+    ensure_dir(Path(outputs.get("figures_dir", "processed/figures")))
+    ensure_dir(Path(outputs.get("cellxgene_dir", "processed/cellxgene_release")))
+
+
+def _write_demo_config_file(config: Dict[str, Any]) -> Path:
+    path = Path("processed") / "demo_config.yaml"
+    ensure_dir(path.parent)
+    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    return path
+
+
+def _synthesize_demo_dataset(
+    dataset_id: str,
+    cancer_type: str,
+    *,
+    rng: np.random.Generator,
+    n_cells: int,
+    n_genes: int,
+):
+    import anndata as ad
+
+    marker_panel = {
+        "CD8_T": ["CD8A", "NKG7"],
+        "CD4_T": ["CD4", "IL7R"],
+        "Treg": ["FOXP3", "IL2RA"],
+        "NK": ["GNLY", "PRF1"],
+        "B_cell": ["MS4A1", "CD79A"],
+        "Plasma": ["MZB1", "SDC1"],
+        "Mono": ["LST1", "LYZ"],
+        "DC_cDC1": ["CLEC9A"],
+        "DC_cDC2": ["FCER1A", "ITGAX"],
+    }
+    marker_genes = sorted({gene for genes in marker_panel.values() for gene in genes})
+    mt_genes = [f"MT-{i}" for i in range(max(10, min(40, n_genes // 20)))]
+
+    remaining_genes = n_genes - len(marker_genes) - len(mt_genes)
+    extra_genes = [f"GENE_{i}" for i in range(max(0, remaining_genes))]
+    var_names = (marker_genes + mt_genes + extra_genes)[:n_genes]
+    var_name_to_idx = {name: idx for idx, name in enumerate(var_names)}
+
+    counts = rng.poisson(lam=1.5, size=(n_cells, n_genes)).astype(np.float32)
+    counts += rng.binomial(1, 0.35, size=(n_cells, n_genes)).astype(np.float32)
+
+    cell_types = rng.choice(list(marker_panel.keys()), size=n_cells, replace=True)
+    for idx, cell_type in enumerate(cell_types):
+        expressed = rng.choice(n_genes, size=rng.integers(low=350, high=min(n_genes, 600)), replace=False)
+        counts[idx, expressed] += rng.integers(1, 6, size=expressed.size)
+        for gene in marker_panel[cell_type]:
+            gene_idx = var_name_to_idx.get(gene)
+            if gene_idx is not None:
+                counts[idx, gene_idx] += rng.integers(6, 12)
+
+    adata = ad.AnnData(counts)
+    adata.var_names = var_names
+    adata.var_names_make_unique()
+    adata.var["feature_name"] = adata.var_names
+
+    adata.obs_names = [f"{dataset_id}_cell_{i}" for i in range(n_cells)]
+    adata.obs_names_make_unique()
+    adata.obs["dataset_id"] = dataset_id
+    adata.obs["cancer_type"] = cancer_type
+    adata.obs["platform"] = "synthetic"
+    adata.obs["cell_type"] = cell_types
+
+    return adata
+
+
+def _run_fallback_integration(config: Dict[str, Any], dataset_ids: List[str]) -> None:
+    import anndata as ad
+
+    logging.info("Executing fallback PCA/UMAP integration for demo data")
+    adatas = []
+    for dataset_id in dataset_ids:
+        input_path = Path("data/interim") / f"{dataset_id}.doublet_filtered.h5ad"
+        if not input_path.exists():
+            raise FileNotFoundError(f"Expected doublet-filtered dataset missing: {input_path}")
+        adatas.append(ad.read_h5ad(input_path))
+
+    if not adatas:
+        raise ValueError("Fallback integration received no datasets")
+
+    combined = ad.concat(adatas, join="outer", label="dataset_id", keys=dataset_ids, index_unique="-")
+    combined.var_names_make_unique()
+
+    seed = config.get("seed", 0)
+    batch_key = config.get("integration", {}).get("batch_key", "dataset_id")
+    if batch_key not in combined.obs.columns:
+        combined.obs[batch_key] = combined.obs.get("dataset_id")
+
+    with timer("Fallback PCA/UMAP integration"):
+        sc.pp.normalize_total(combined, target_sum=1e4)
+        sc.pp.log1p(combined)
+        try:
+            sc.pp.highly_variable_genes(
+                combined,
+                n_top_genes=min(combined.n_vars, 2000),
+                batch_key=batch_key,
+            )
+            hv_mask = combined.var.get("highly_variable")
+            if hv_mask is not None and hv_mask.sum() >= 10:
+                combined = combined[:, hv_mask].copy()
+        except Exception as exc:  # pragma: no cover - defensive
+            logging.warning("Fallback HVG selection failed; proceeding without HVG filtering (%s)", exc)
+        sc.pp.scale(combined, max_value=10)
+        sc.tl.pca(combined, svd_solver="arpack", random_state=seed)
+        sc.pp.neighbors(
+            combined,
+            n_neighbors=config.get("neighbors", {}).get("n_neighbors", 15),
+            random_state=seed,
+        )
+        sc.tl.umap(
+            combined,
+            min_dist=config.get("umap", {}).get("min_dist", 0.4),
+            spread=config.get("umap", {}).get("spread", 1.0),
+            random_state=seed,
+        )
+
+    integrated_path = Path("processed") / "integrated_atlas.h5ad"
+    ensure_dir(integrated_path.parent)
+    combined.write(integrated_path)
+
+    metrics_dir = Path(config.get("outputs", {}).get("metrics_dir", "processed/metrics"))
+    ensure_dir(metrics_dir)
+    fallback_metrics = {
+        "method": "fallback",
+        "details": "Fallback PCA/UMAP integration executed (demo)",
+    }
+    (metrics_dir / "integration_metrics.json").write_text(json.dumps(fallback_metrics, indent=2))
+    config.setdefault("integration", {})["method"] = "fallback"
+
+
+def run_demo(config_path: str, *, max_datasets: int = 2) -> None:
+    """Run an end-to-end demo using synthetic data and the standard pipeline."""
     try:
-        import anndata as ad
+        import anndata  # noqa: F401
         from . import annotate, doublets, export, integration, qc, viz
-    except ImportError as e:
-        logging.error(f"Failed to import required modules: {e}")
-        logging.info("Creating minimal demo without full pipeline...")
+    except ImportError as exc:
+        logging.error("Demo run requires optional dependencies: %s", exc)
+        logging.info("Falling back to minimal demo assets.")
         create_minimal_demo(config_path)
         return
 
     setup_logging()
-    config = load_config(config_path)
-    set_seed(config["seed"])
+    original_config = load_config(config_path)
+    demo_config = copy.deepcopy(original_config)
 
-    logging.info("Starting demo run with synthetic data")
+    seed = demo_config.get("seed", 0)
+    set_seed(seed)
 
-    # Create synthetic datasets
-    ensure_dir(Path("data/raw"))
-    ensure_dir(Path("data/interim"))
-    ensure_dir(Path("processed"))
-    ensure_dir(Path("processed/figures"))
-    ensure_dir(Path("processed/cellxgene_release"))
+    dataset_entries = list(demo_config.get("datasets", []))[:max_datasets]
+    if not dataset_entries:
+        raise ValueError("Configuration must contain at least one dataset for the demo.")
 
-    # Generate 2 synthetic datasets
-    adatas = []
-    for i, dataset_info in enumerate(config["datasets"][:2]):
-        dataset_id = dataset_info["id"]
-        cancer_type = dataset_info["cancer_type"]
+    demo_config["datasets"] = dataset_entries
+    demo_config.setdefault("outputs", {})
+    demo_config["outputs"].setdefault("metrics_dir", "processed/metrics")
+    demo_config["outputs"].setdefault("figures_dir", "processed/figures")
+    demo_config["outputs"].setdefault("cellxgene_dir", "processed/cellxgene_release")
+    demo_config.setdefault("benchmarking", {"enabled": False})
+    demo_config.setdefault("tcr", {"enabled": False})
 
-        # Create synthetic data (500 cells, 2000 genes)
-        X = np.random.negative_binomial(5, 0.3, size=(500, 2000))
-        adata = ad.AnnData(X.astype(np.float32))
+    _ensure_demo_outputs(demo_config)
 
-        # Add gene names (including some MT genes)
-        gene_names = [f"GENE_{j}" for j in range(1900)]
-        gene_names.extend([f"MT-{j}" for j in range(100)])  # Add MT genes
-        adata.var_names = gene_names
-        adata.var_names_make_unique()
+    rng = np.random.default_rng(seed)
+    n_cells = max(160, 80 * len(dataset_entries))
+    n_genes = 900
 
-        # Add cell metadata
-        adata.obs["dataset_id"] = dataset_id
-        adata.obs["cancer_type"] = cancer_type
-        adata.obs_names = [f"{dataset_id}_cell_{j}" for j in range(500)]
-        adata.obs_names_make_unique()
-
-        adatas.append(adata)
-
-        # Save to interim (simulate QC and doublet filtering)
-        # Relax QC for synthetic data to avoid empty datasets
-        qc_relaxed = {
-            "min_genes": max(100, int(0.01 * adata.X.sum(axis=1).mean())),
-            "max_genes": int(adata.X.sum(axis=1).mean() * 10),
-            "max_mt_pct": 50,
-        }
-        adata_qc = qc.apply_filters(qc.compute_qc_metrics(adata), qc_relaxed)
-        adata_doublet = doublets.filter_doublets(
-            adata_qc,
-            doublets.run_scrublet(adata_qc, config["doublets"]["expected_doublet_rate"])
+    for dataset in dataset_entries:
+        dataset_id = dataset["id"]
+        cancer_type = dataset.get("cancer_type", "Unknown")
+        adata = _synthesize_demo_dataset(
+            dataset_id,
+            cancer_type,
+            rng=rng,
+            n_cells=n_cells,
+            n_genes=n_genes,
         )
-        adata_doublet.write(f"data/interim/{dataset_id}.doublet_filtered.h5ad")
+        out_path = Path("data/raw") / f"{dataset_id.lower()}_demo.h5ad"
+        adata.write_h5ad(out_path)
+        dataset["url"] = str(out_path)
+        dataset["platform"] = dataset.get("platform", "synthetic")
+        for key in ("receptor_path", "receptor_format", "receptor_sha256", "receptor"):
+            dataset.pop(key, None)
 
-    # Integration
-    logging.info("Running integration")
-    adata_integrated = integration.integrate_scvi(
-        adatas,
-        config["integration"]["batch_key"],
-        config["integration"]["latent_dim"]
-    )
-    adata_integrated.write("processed/integrated_atlas.h5ad")
+    qc_cfg = copy.deepcopy(demo_config.get("qc", {}))
+    qc_cfg["min_genes"] = min(qc_cfg.get("min_genes", 200), max(150, n_genes // 3))
+    qc_cfg["max_genes"] = max(qc_cfg.get("max_genes", 6000), qc_cfg["min_genes"] + 100)
+    qc_cfg["max_mt_pct"] = max(qc_cfg.get("max_mt_pct", 15), 30)
+    qc_cfg.setdefault("min_cells_per_gene", 3)
+    demo_config["qc"] = qc_cfg
 
-    # Annotation
-    logging.info("Running annotation")
-    adata_annotated = annotate.score_and_annotate(adata_integrated, config["annotation"]["min_pct"])
-    adata_annotated.write("processed/integrated_annotated.h5ad")
+    logging.info("Prepared synthetic datasets for demo (%d dataset(s))", len(dataset_entries))
 
-    # Visualization
-    logging.info("Generating figures")
-    viz.umap_by(adata_annotated, "cell_type", "processed/figures/umap_by_cell_type.png")
-    viz.umap_by(adata_annotated, "dataset_id", "processed/figures/umap_by_dataset.png")
-    viz.umap_by(adata_annotated, "cancer_type", "processed/figures/umap_by_cancer_type.png")
-    viz.stacked_bar(
-        adata_annotated,
-        ["cancer_type", "cell_type"],
-        "processed/figures/proportions_by_cancer_type.png",
-        normalize=True,
-    )
+    for dataset in dataset_entries:
+        dataset_id = dataset["id"]
+        with timer(f"QC ({dataset_id})"):
+            qc.process_dataset_qc(dataset_id, demo_config)
+        with timer(f"Doublets ({dataset_id})"):
+            doublets.process_dataset_doublets(dataset_id, demo_config)
 
-    # Export for cellxgene
-    logging.info("Exporting for cellxgene")
-    export.write_cellxgene(adata_annotated, "processed/cellxgene_release")
+    integration_executed = False
+    try:
+        with timer("Integration"):
+            integration.run_integration(demo_config)
+            integration_executed = True
+    except ImportError as exc:
+        logging.warning("Integration dependency missing (%s); using fallback integration.", exc)
+    except Exception as exc:  # pragma: no cover - defensive
+        logging.warning("Integration failed (%s); using fallback integration.", exc)
 
-    # Generate report
-    generate_report(config_path)
+    if not integration_executed:
+        _run_fallback_integration(demo_config, [entry["id"] for entry in dataset_entries])
 
-    logging.info("Demo completed successfully!")
+    with timer("Annotation"):
+        annotate.run_annotation(demo_config)
+
+    with timer("Export"):
+        export.run_export(demo_config)
+
+    with timer("Visualization"):
+        viz.generate_all_figures(demo_config)
+
+    demo_config_path = _write_demo_config_file(demo_config)
+    with timer("Report"):
+        generate_report(str(demo_config_path))
+
+    logging.info("Demo pipeline completed. Artifacts are available under %s", Path("processed").absolute())
 
 
 def create_minimal_demo(config_path: str) -> None:
-    """Create a minimal demo that doesn't require heavy dependencies."""
-    import numpy as np
-    import pandas as pd
+    """Create lightweight demo assets without optional dependencies."""
+    import anndata as ad
+    import matplotlib.pyplot as plt
 
     setup_logging()
     config = load_config(config_path)
-    set_seed(config["seed"])
+    set_seed(config.get("seed", 0))
 
-    logging.info("Creating minimal demo...")
+    logging.info("Creating minimal demo assets...")
 
-    # Create directories
-    ensure_dir(Path("data/raw"))
-    ensure_dir(Path("data/interim"))
     ensure_dir(Path("processed"))
     ensure_dir(Path("processed/figures"))
     ensure_dir(Path("processed/cellxgene_release"))
 
-    # Create synthetic datasets
-    datasets = []
-    for dataset_info in config["datasets"][:2]:
-        dataset_id = dataset_info["id"]
-        cancer_type = dataset_info["cancer_type"]
+    rng = np.random.default_rng(0)
+    n_cells = 80
+    n_genes = 60
 
-        # Create synthetic data (100 cells, 100 genes)
-        X = np.random.negative_binomial(5, 0.3, size=(100, 100))
+    counts = rng.poisson(lam=2.0, size=(n_cells, n_genes)).astype(np.float32)
+    counts += rng.binomial(1, 0.4, size=(n_cells, n_genes))
 
-        # Create metadata
-        obs = pd.DataFrame({
-            "dataset_id": [dataset_id] * 100,
-            "cancer_type": [cancer_type] * 100,
-            "cell_type": np.random.choice(["CD8_T", "CD4_T", "NK", "B_cell"], 100)
-        })
+    obs = pd.DataFrame({
+        "dataset_id": rng.choice([d["id"] for d in config.get("datasets", [])[:2]] or ["DEMO"], size=n_cells),
+        "cancer_type": rng.choice(["Melanoma", "NSCLC", "Breast"], size=n_cells),
+        "cell_type": rng.choice(["CD8_T", "CD4_T", "NK", "B_cell"], size=n_cells),
+    })
+    var = pd.DataFrame(index=[f"GENE_{i}" for i in range(n_genes)])
 
-        var = pd.DataFrame(index=[f"GENE_{i}" for i in range(100)])
+    adata = ad.AnnData(counts, obs=obs, var=var)
+    adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
+    adata.var_names_make_unique()
 
-        datasets.append({
-            "dataset_id": dataset_id,
-            "X": X,
-            "obs": obs,
-            "var": var
-        })
+    integrated_path = Path("processed") / "integrated_atlas.h5ad"
+    annotated_path = Path("processed") / "integrated_annotated.h5ad"
+    cellxgene_path = Path("processed") / "cellxgene_release" / "atlas.h5ad"
 
-    # Create integrated dataset
-    all_obs = pd.concat([d["obs"] for d in datasets])
-    all_X = np.vstack([d["X"] for d in datasets])
+    adata.write_h5ad(integrated_path)
 
-    # Add UMAP coordinates
-    np.random.seed(42)
-    umap_coords = np.random.randn(len(all_obs), 2)
+    annotated = adata.copy()
+    annotated.write_h5ad(annotated_path)
 
-    # Create simple figures
-    logging.info("Creating figures...")
+    ensure_dir(cellxgene_path.parent)
+    annotated.write_h5ad(cellxgene_path)
 
-    # Cell type distribution
-    plt.figure(figsize=(8, 6))
-    all_obs["cell_type"].value_counts().plot(kind="bar")
-    plt.title("Cell Type Distribution")
-    plt.savefig("processed/figures/cell_type_distribution.png")
+    plt.figure(figsize=(6, 4))
+    obs["cell_type"].value_counts().plot(kind="bar", color="#4c72b0")
+    plt.ylabel("Cells")
+    plt.title("Cell Type Distribution (Demo)")
+    plt.tight_layout()
+    plt.savefig(Path("processed/figures") / "cell_type_distribution.png", dpi=300)
     plt.close()
 
-    # Cancer type distribution
-    plt.figure(figsize=(8, 6))
-    all_obs["cancer_type"].value_counts().plot(kind="bar")
-    plt.title("Cancer Type Distribution")
-    plt.savefig("processed/figures/cancer_type_distribution.png")
+    plt.figure(figsize=(6, 4))
+    obs["cancer_type"].value_counts().plot(kind="bar", color="#55a868")
+    plt.ylabel("Cells")
+    plt.title("Cancer Type Distribution (Demo)")
+    plt.tight_layout()
+    plt.savefig(Path("processed/figures") / "cancer_type_distribution.png", dpi=300)
     plt.close()
 
-    # Dataset distribution
-    plt.figure(figsize=(8, 6))
-    all_obs["dataset_id"].value_counts().plot(kind="bar")
-    plt.title("Dataset Distribution")
-    plt.savefig("processed/figures/dataset_distribution.png")
-    plt.close()
-
-    # Create processed data files
-    with open("processed/integrated_atlas.h5ad", "w") as f:
-        f.write("# Synthetic integrated atlas\n")
-        f.write(f"Cells: {len(all_obs)}\n")
-        f.write(f"Genes: {all_X.shape[1]}\n")
-
-    with open("processed/integrated_annotated.h5ad", "w") as f:
-        f.write("# Synthetic annotated atlas\n")
-        f.write(f"Cells: {len(all_obs)}\n")
-        f.write(f"Cell types: {all_obs['cell_type'].nunique()}\n")
-
-    # Create cellxgene export
-    ensure_dir(Path("processed/cellxgene_release"))
-    with open("processed/cellxgene_release/atlas.h5ad", "w") as f:
-        f.write("# Synthetic cellxgene export\n")
-        f.write("Ready for cellxgene viewer\n")
-
-    # Generate report
     generate_report(config_path)
 
-    logging.info("Minimal demo completed successfully!")
+    logging.info("Minimal demo artifacts generated successfully.")
 
 
 def _generate_tcr_section(config: Dict, metrics_dir: Path, figures_dir: Path, embed_figures: bool) -> List[str]:
