@@ -272,7 +272,7 @@ datasets:
 - Reports actionable error messages
 - Exits with non-zero code on failures (CI-friendly)
 
-## FAQ & Troubleshooting
+## Troubleshooting
 
 - Memory: use backed mode for large datasets
   ```python
@@ -287,30 +287,6 @@ datasets:
 - `ImportError: libssl.so.1.1`: indicates the interpreter lacks OpenSSL 1.1+. Activate the `immune-atlas` environment (`mamba activate immune-atlas`), or install OpenSSL via `mamba install openssl` (cryptography ≥41 bundled in `tests/requirements.txt` also brings OpenSSL 3).
 - Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better. Both stages share HVGs so diagnostics in `processed/metrics/integration_metrics.json` are comparable.
 - Missing metrics? Run stages through Snakemake or the CLI so QC/doublet/integration/annotation summaries populate `processed/metrics/`.
-
-## Portfolio Assets
-
-![UMAP thumbnail](docs/portfolio/umap_thumbnail.svg)
-![Streamlit thumbnail](docs/portfolio/streamlit_thumbnail.svg)
-
-- **Reproduce figures (5–7 min)**  
-  1. `make demo` (synthesises datasets, runs QC → doublets → integration → annotation)  
-  2. Review outputs under `processed/figures/` (UMAPs, QC violins, doublet histograms) and `processed/metrics/`.  
-  3. Capture favourite panels for slides or export `processed/report.md` for a narrative summary.  
-- **Streamlit walkthrough (2–3 min)**  
-  1. Install package in editable mode (`pip install -e .[dev]`).  
-  2. Launch `make app` → opens the atlas explorer with dataset filters, gene overlays, and proportions.  
-  3. Highlight the Harmony/scVI toggle and receptor summaries when demoing the UX.  
-- **Interview talking points**  
-  - Harmony ↔ scVI integration switch with shared-HVG selection and regression metrics.  
-  - Automated QC/doublet diagnostics and receptor/TCR analytics feeding into the final report.  
-  - Typed CLI (`scimmuneatlas <stage>`) + Snakemake pipeline ensure reproducibility and CI-friendly exits.  
-- **Ready-to-share collateral**  
-  - `notebooks/atlas_interpretation.ipynb`: Guided story for biological insights.  
-  - `notebooks/metadata_integration_example.ipynb`: Clinical/TCR merge template.  
-  - `docs/portfolio_one_pager.md`: Updated one-pager for interviews.  
-  - `docs/video_walkthrough_script.md`, `docs/blog_post_outline.md`: Narrative scaffolds.  
-  - `docs/resume_blurbs.md`: Copy-paste accomplishment bullets for resumes/LinkedIn.  
 
 ## Citation
 
