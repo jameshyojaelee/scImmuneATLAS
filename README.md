@@ -80,6 +80,18 @@ To validate the demo helpers in isolation:
 pytest -q tests/test_demo_utils.py
 ```
 
+### Demo Snapshots
+
+`make demo` also writes a small gallery to `processed/figures/` so you can sanity-check your setup without real data:
+
+| UMAP by cell type | UMAP by dataset | UMAP by cancer type |
+| --- | --- | --- |
+| ![UMAP by cell type](processed/figures/umap_by_cell_type.png) | ![UMAP by dataset](processed/figures/umap_by_dataset.png) | ![UMAP by cancer type](processed/figures/umap_by_cancer_type.png) |
+
+| Proportions by dataset | Proportions by cancer type |
+| --- | --- |
+| ![Proportions by dataset](processed/figures/proportions_by_dataset.png) | ![Proportions by cancer type](processed/figures/proportions_by_cancer_type.png) |
+
 ## Data Acquisition
 
 Use the example `.h5ad` inputs in `data/raw/` referenced by `config/atlas.yaml`, or fetch new subsets from CELLxGENE Census.
