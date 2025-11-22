@@ -14,7 +14,7 @@ dependencies:
   - scrublet
   - harmonypy
   - scvi-tools
-  - pytorch  # CPU build will be selected on systems without CUDA
+  - pytorch  # CPU build will be selected unless CUDA build available
   - umap-learn
   - matplotlib>=3.7
   - seaborn
@@ -30,4 +30,11 @@ dependencies:
   - openpyxl
   - h5py
   - statsmodels
-
+  - pip:
+      - anndata2ri
+      - black
+      - isort
+      - flake8
+      - ruff
+      - pytest
+      - pre-commit

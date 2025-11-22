@@ -49,11 +49,10 @@ cd scImmuneATLAS
 
 - **Conda / Mamba**
   ```
-  mamba env create -f env.yml   # GPU-enabled if CUDA is available
+  mamba env create -f env/base.yml
   mamba activate immune-atlas
-  # CPU-only alternative:
-  # conda env create -f env.cpu.yml && conda activate immune-atlas
-  # No micromamba? use env.nomamba.yml
+  # Optional: add CUDA 12.1 support
+  # mamba env update -n immune-atlas -f env/gpu.yml
   ```
 - **Python venv**
   ```
@@ -128,9 +127,9 @@ Configured datasets (see `config/atlas.yaml`). The first three are present local
 scImmuneATLAS/
 ├── README.md                    # This file
 ├── LICENSE                      # MIT license
-├── env.yml                      # Main Conda/mamba environment (GPU optional)
-├── env.cpu.yml                  # CPU-only environment
-├── env.nomamba.yml              # Fallback env without micromamba helpers
+├── env/                         # Environment definitions (base + optional GPU overlay)
+│   ├── base.yml
+│   └── gpu.yml
 ├── Makefile                     # Lint, test, demo, app, fetch, etc.
 ├── Snakefile                    # Snakemake workflow
 ├── config/
@@ -251,7 +250,8 @@ Features: UMAP exploration, filtering, gene expression overlays, proportions, da
 
 ### Testing
 
-- Create the recommended environment once: `mamba env create -f env.yml && mamba activate immune-atlas`.
+- Create the recommended environment once: `mamba env create -f env/base.yml && mamba activate immune-atlas`.
+- Add CUDA support if desired: `mamba env update -n immune-atlas -f env/gpu.yml`.
 - Install extra test tooling (if not already present): `pip install -r tests/requirements.txt`.
 - Run the suite via `make test` (auto-detects mamba/conda and falls back to system Python with a warning).
 - To run a specific module: `mamba run -n immune-atlas pytest -q tests/test_qc.py`.
@@ -300,26 +300,5 @@ datasets:
 - Integration choice: Harmony is lighter/faster; scVI handles complex batch effects better. Both stages share HVGs so diagnostics in `processed/metrics/integration_metrics.json` are comparable.
 - Missing metrics? Run stages through Snakemake or the CLI so QC/doublet/integration/annotation summaries populate `processed/metrics/`.
 
-## Citation
-
-```
-@software{scImmuneATLAS,
-  title = {scImmuneATLAS: A comprehensive single-cell immune atlas framework},
-  author = {Your Name},
-  year = {2024},
-  url = {https://github.com/YOUR_ORG_OR_USERNAME/scImmuneATLAS}
-}
-```
-
-## Contributing
-
-1) Fork the repository  
-2) Create a feature branch (`git checkout -b feature/amazing-feature`)  
-3) Run tests (`make test`) and linting (`make lint`)  
-4) Commit (`git commit -m 'Add amazing feature'`)  
-5) Push (`git push origin feature/amazing-feature`)  
-6) Open a Pull Request
-
 ## License
-
 MIT License — see `LICENSE`.

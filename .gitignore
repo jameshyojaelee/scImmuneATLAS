@@ -25,6 +25,16 @@ downloads/
 eggs/
 .eggs/
 .micromamba/
+.numba_cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.spyderproject/
+.spyproject/
+.ropeproject/
+.vscode/
+.idea/
+.DS_Store/
 lib/
 lib64/
 parts/
@@ -93,7 +103,6 @@ celerybeat-schedule
 # Environments
 .env
 .venv
-env/
 venv/
 ENV/
 env.bak/

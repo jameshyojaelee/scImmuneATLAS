@@ -1,0 +1,5 @@
+name: immune-atlas
+channels:
+  - nvidia
+dependencies:
+  - pytorch-cuda=12.1  # optional GPU acceleration; safe to omit on CPU-only machines

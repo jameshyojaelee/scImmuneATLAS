@@ -3,7 +3,7 @@
 ENV_NAME=immune-atlas
 
 setup:
-	mamba env create -f env.yml || true
+	mamba env create -f env/base.yml || true
 	@echo "Activate with: mamba activate $(ENV_NAME)"
 	pre-commit install || true
 

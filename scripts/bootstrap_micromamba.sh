@@ -6,7 +6,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 MAMBA_DIR="$PROJECT_ROOT/.micromamba"
 ENV_NAME="immune-atlas"
-ENV_FILE_CPU="$PROJECT_ROOT/env.cpu.yml"
+ENV_FILE_BASE="$PROJECT_ROOT/env/base.yml"
 
 mkdir -p "$MAMBA_DIR"
 
@@ -20,8 +20,8 @@ fi
 export PATH="$MAMBA_DIR/bin:$PATH"
 export MAMBA_ROOT_PREFIX="$MAMBA_DIR"
 
-echo "Creating/updating env $ENV_NAME from $ENV_FILE_CPU..."
-micromamba create -y -n "$ENV_NAME" -f "$ENV_FILE_CPU" || true
+echo "Creating/updating env $ENV_NAME from $ENV_FILE_BASE..."
+micromamba create -y -n "$ENV_NAME" -f "$ENV_FILE_BASE" || true
 
 eval "$(micromamba shell hook -s bash)"
 micromamba activate "$ENV_NAME"
@@ -31,4 +31,3 @@ python -V
 python -c "import anndata; import numpy as np; print('anndata', anndata.__version__, 'numpy', np.__version__)"
 
 echo "Environment $ENV_NAME is ready."
-
